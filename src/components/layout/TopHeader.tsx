@@ -4,6 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { GlobalSearchInput } from "./GlobalSearch";
 import { NotificationsBell } from "./NotificationsBell";
+import { ShopSelector } from "./ShopSelector";
 
 export function TopHeader({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }) {
   const { user, logout } = useAuth();
@@ -56,14 +57,9 @@ export function TopHeader({ onOpenMobileMenu }: { onOpenMobileMenu: () => void }
 
         <div className="flex-1 sm:flex-none" />
 
-        {/* Shop status — text hides on mobile, dot remains */}
-        <div className="hidden md:flex items-center gap-1.5 text-sm text-charcoal-muted shrink-0">
-          <span className="w-2 h-2 rounded-full bg-olive" />
-          <span>Main Shop</span>
-          <span className="text-charcoal/20">•</span>
-          <span className="text-olive font-medium">Online</span>
-        </div>
-        <span className="md:hidden w-2 h-2 rounded-full bg-olive shrink-0" aria-label="Shop online" />
+        {/* Global Shop Selector — the one common selector for the whole
+            Admin app (Phase 2 spec §4); pages never render their own. */}
+        <ShopSelector />
 
         <NotificationsBell />
 

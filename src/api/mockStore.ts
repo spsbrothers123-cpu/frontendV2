@@ -20,6 +20,7 @@ import type {
   CashierRequest,
   CashierAccount,
   InvitationCode,
+  Shop,
 } from "../types";
 
 // Simulated network latency + occasional realism. Kept short so the UI
@@ -34,6 +35,15 @@ export const MOCK_ADMIN: AdminUser = {
   email: "admin@eggmart.local",
   role: "admin",
 };
+
+// Dev-mode-only stand-in for the real GET /admin/shops response — never
+// used when USE_MOCK is off (see api/shops.ts). Mirrors the shape the
+// backend's listShopsForAdmin/toShopResponse actually returns.
+let shops: Shop[] = [
+  { id: "shop-1", name: "RBR Egg Mart - Veerapandi", code: "veerapandi", location: "Veerapandi", address: "Veerapandi, Coimbatore", current: true },
+  { id: "shop-2", name: "RBR Egg Mart - Gandhipuram", code: "gandhipuram", location: "Gandhipuram", address: "Gandhipuram, Coimbatore", current: false },
+  { id: "shop-3", name: "RBR Egg Mart - Singanallur", code: "singanallur", location: "Singanallur", address: "Singanallur, Coimbatore", current: false },
+];
 
 let products: Product[] = [
   { id: "p1", name: "White Eggs (Tray)", category: "Eggs", sellingPrice: 165, costPrice: 140, stock: 18, unit: "tray", lowStockThreshold: 20, status: "active", createdAt: "2026-06-01", updatedAt: "2026-08-20" },
@@ -225,6 +235,8 @@ export function genId(prefix: string) {
 }
 
 export const store = {
+  get shops() { return shops; },
+  set shops(v: Shop[]) { shops = v; },
   get products() { return products; },
   set products(v: Product[]) { products = v; },
   get customers() { return customers; },

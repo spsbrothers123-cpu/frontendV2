@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
+import { ShopProvider } from "./context/ShopContext";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { AdminLayout } from "./components/layout/AdminLayout";
 
@@ -44,7 +45,9 @@ export default function App() {
                 path="/admin"
                 element={
                   <ProtectedRoute>
-                    <AdminLayout />
+                    <ShopProvider>
+                      <AdminLayout />
+                    </ShopProvider>
                   </ProtectedRoute>
                 }
               >

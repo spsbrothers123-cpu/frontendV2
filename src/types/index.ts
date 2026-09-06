@@ -9,6 +9,19 @@ export interface AdminUser {
   avatarUrl?: string;
 }
 
+// ── Shops (Global Admin Shop Selector) ────────────────
+// One row per shop this admin is authorized for (backend AdminShopLink).
+// `current` reflects the admin's active shop server-side — the frontend
+// never decides this on its own.
+export interface Shop {
+  id: string;
+  name: string;
+  code: string;
+  location: string;
+  address?: string | null;
+  current: boolean;
+}
+
 // ── Shared ────────────────────────────────────────────
 export type RequestState = "idle" | "loading" | "success" | "error";
 
