@@ -1,14 +1,23 @@
 import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { DesktopSidebar, MobileDrawer } from "./Sidebar";
 import { TopHeader } from "./TopHeader";
 import { useShop } from "../../context/ShopContext";
 
+// Cashiers and Sessions are deliberate exceptions to the Global Shop
+// Selector (Phase 3 spec §1/§2): both span every shop the admin owns and
+// never depend on which shop is currently active, so switching shops must
+// not remount them or wipe their own local state (active tab, selected
+// cashier filter, page number, etc).
+const SHOP_INDEPENDENT_PATHS = ["/admin/cashiers", "/admin/sessions"];
+
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isLoading, selectedShopId } = useShop();
+  const { pathname } = useLocation();
+  const isShopIndependentPage = SHOP_INDEPENDENT_PATHS.some((p) => pathname.startsWith(p));
 
   return (
     <div className="min-h-screen bg-ivory flex">
@@ -30,7 +39,10 @@ export function AdminLayout() {
             // the newly selected shop with no per-page selector or
             // per-page shopId plumbing, and no leftover filters/rows
             // from the previous shop lingering in local state.
-            <Outlet key={selectedShopId ?? "no-shop"} />
+            //
+            // Cashiers and Sessions opt out via a constant key instead —
+            // see SHOP_INDEPENDENT_PATHS above.
+            <Outlet key={isShopIndependentPage ? "shop-independent" : selectedShopId ?? "no-shop"} />
           )}
         </main>
       </div>

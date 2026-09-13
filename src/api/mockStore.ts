@@ -132,9 +132,9 @@ const creditTimelineByCustomer: Record<string, CreditTimelineEvent[]> = {
 };
 
 let sessionHistory: SessionHistoryItem[] = [
-  { id: "ses1", cashier: "Meena", openingTime: "2026-08-26T08:00:00", closingTime: "2026-08-26T20:15:00", openingCash: 2000, closingCash: 33450, sales: 31200, cashDifference: 250, status: "Discrepancy" },
-  { id: "ses2", cashier: "Raghav", openingTime: "2026-08-25T08:00:00", closingTime: "2026-08-25T20:05:00", openingCash: 2000, closingCash: 28900, sales: 26900, cashDifference: 0, status: "Closed" },
-  { id: "ses3", cashier: "Meena", openingTime: "2026-08-24T08:00:00", closingTime: "2026-08-24T20:20:00", openingCash: 1500, closingCash: 24100, sales: 22600, cashDifference: 0, status: "Closed" },
+  { id: "ses1", cashier: "Meena", shop: "Main Shop", openingTime: "2026-08-26T08:00:00", closingTime: "2026-08-26T20:15:00", openingCash: 2000, closingCash: 33450, sales: 31200, cashDifference: 250, status: "Discrepancy" },
+  { id: "ses2", cashier: "Raghav", shop: "Main Shop", openingTime: "2026-08-25T08:00:00", closingTime: "2026-08-25T20:05:00", openingCash: 2000, closingCash: 28900, sales: 26900, cashDifference: 0, status: "Closed" },
+  { id: "ses3", cashier: "Meena", shop: "Main Shop", openingTime: "2026-08-24T08:00:00", closingTime: "2026-08-24T20:20:00", openingCash: 1500, closingCash: 24100, sales: 22600, cashDifference: 0, status: "Closed" },
 ];
 
 const sessionActivityById: Record<string, SessionActivityEntry[]> = {

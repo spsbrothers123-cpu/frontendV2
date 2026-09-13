@@ -7,6 +7,7 @@ import type {
   StockMovement,
   StockAdjustmentFormValues,
   LowStockItem,
+  CashierStockBreakdown,
 } from "../types";
 
 export interface InventoryQuery {
@@ -142,5 +143,38 @@ export async function fetchLowStockAlerts(): Promise<LowStockItem[]> {
     return delay(computeLowStock(), 450);
   }
   const { data } = await apiClient.get<LowStockItem[]>("/admin/inventory/alerts");
+  return data;
+}
+
+// Cashier-level inventory foundation: a single product's stock broken down
+// by the cashier who owns each portion — e.g. "Arun: 50, Bala: 100". Never
+// collapse this into one number; each row is that cashier's own, isolated
+// stock. Used to populate "which cashier?" pickers with each cashier's
+// CURRENT quantity (not just their name), and for any per-cashier detail
+// view.
+//
+// NOTE for backend integration: expects GET /admin/inventory/:productId/by-cashier
+export async function fetchProductCashierBreakdown(productId: string): Promise<CashierStockBreakdown> {
+  if (USE_MOCK) {
+    // The mock store doesn't model multi-cashier inventory — it only ever
+    // simulated one shared shop-wide number. Rather than fabricate a
+    // fictitious multi-cashier split with no basis in the mock data, this
+    // surfaces the one number the mock store actually has, attributed to
+    // whichever demo cashier exists (or none, if the mock store has none).
+    const product = store.products.find((p) => p.id === productId);
+    const demoCashier = store.cashiers.find((c) => c.active);
+    return delay(
+      {
+        productId,
+        productName: product?.name ?? "",
+        totalStock: product?.stock ?? 0,
+        byCashier: demoCashier
+          ? [{ cashierId: demoCashier.id, cashierName: demoCashier.name, quantity: product?.stock ?? 0 }]
+          : [],
+      },
+      350
+    );
+  }
+  const { data } = await apiClient.get<CashierStockBreakdown>(`/admin/inventory/${productId}/by-cashier`);
   return data;
 }

@@ -81,8 +81,10 @@ export async function updateProduct(id: string, values: ProductFormValues): Prom
   return data;
 }
 
-// NOTE for backend integration: expects PATCH /admin/products/:id/adjust-stock { delta, reason }
-export async function adjustProductStock(id: string, delta: number): Promise<Product> {
+// NOTE for backend integration: expects PATCH /admin/products/:id/adjust-stock { delta, cashierId }
+// cashierId is required — every adjustment targets a specific cashier's
+// own inventory, never a shop-wide pool.
+export async function adjustProductStock(id: string, delta: number, cashierId: string): Promise<Product> {
   if (USE_MOCK) {
     let updated: Product | undefined;
     store.products = store.products.map((p) => {
@@ -93,7 +95,7 @@ export async function adjustProductStock(id: string, delta: number): Promise<Pro
     if (!updated) return Promise.reject({ status: 404, message: "Product not found." });
     return delay(updated, 400);
   }
-  const { data } = await apiClient.patch<Product>(`/admin/products/${id}/adjust-stock`, { delta });
+  const { data } = await apiClient.patch<Product>(`/admin/products/${id}/adjust-stock`, { delta, cashierId });
   return data;
 }
 

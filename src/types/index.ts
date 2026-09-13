@@ -100,6 +100,12 @@ export interface ProductFormValues {
   unit: ProductUnit;
   lowStockThreshold: number | "";
   status: ProductStatus;
+  // Cashier-level inventory foundation: who owns the initial `stock` above.
+  // Only meaningful (and required by the backend) when creating a brand-new
+  // product with stock > 0 — every unit of stock belongs to a specific
+  // cashier, never a shop-wide pool. Ignored on edits (editing a product no
+  // longer touches stock at all; see ProductFormDrawer's doc comment).
+  cashierId?: string;
 }
 
 // ── Customers ─────────────────────────────────────────
@@ -192,6 +198,10 @@ export interface PurchaseFormValues {
   supplierName: string;
   invoiceNumber: string;
   purchaseDate: string;
+  // Cashier-level inventory foundation: every catalog item in this
+  // purchase increases THIS cashier's own inventory — never a shop-wide
+  // pool, even though a single purchase covers the whole invoice.
+  cashierId: string;
   items: PurchaseFormItemValues[];
 }
 
@@ -222,10 +232,25 @@ export type AdjustmentType = "add" | "remove";
 
 export interface StockAdjustmentFormValues {
   productId: string;
+  // Cashier-level inventory foundation: every adjustment targets a
+  // specific cashier's own inventory — never a shop-wide pool.
+  cashierId: string;
   adjustmentType: AdjustmentType;
   quantity: number | "";
   reason: string;
   notes?: string;
+}
+
+// Cashier-level inventory foundation: one product's stock, broken down by
+// the cashier who owns each portion of it. Never merge these into a single
+// number in the UI — that's exactly the leakage the isolation requirement
+// forbids. Powers the "which cashier?" pickers and any per-cashier detail
+// view.
+export interface CashierStockBreakdown {
+  productId: string;
+  productName: string;
+  totalStock: number;
+  byCashier: { cashierId: string; cashierName: string; quantity: number }[];
 }
 
 // ── Credits ───────────────────────────────────────────

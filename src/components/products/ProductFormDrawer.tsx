@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Drawer, Button, Input, Select } from "../ui";
+import { useActiveCashiers } from "../../hooks/useActiveCashiers";
 import type { Product, ProductFormValues, ProductUnit } from "../../types";
 
 const unitOptions: { label: string; value: ProductUnit }[] = [
@@ -8,7 +9,7 @@ const unitOptions: { label: string; value: ProductUnit }[] = [
 ];
 
 const emptyForm: ProductFormValues = {
-  name: "", category: "", sellingPrice: "", costPrice: "", stock: "", unit: "tray", lowStockThreshold: "", status: "active",
+  name: "", category: "", sellingPrice: "", costPrice: "", stock: "", unit: "tray", lowStockThreshold: "", status: "active", cashierId: "",
 };
 
 interface ProductFormDrawerProps {
@@ -24,6 +25,13 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
   const [errors, setErrors] = useState<Partial<Record<keyof ProductFormValues, string>>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Cashier-level inventory foundation: only relevant when creating a
+  // brand-new product with an initial stock quantity — editing an
+  // existing product never touches stock at all anymore (see the note
+  // above the Stock field below).
+  const isCreating = !product;
+  const { cashiers, isLoading: cashiersLoading, error: cashiersError } = useActiveCashiers(isOpen && isCreating);
+
   useEffect(() => {
     if (isOpen) {
       setValues(
@@ -31,7 +39,7 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
           ? {
               name: product.name, category: product.category, sellingPrice: product.sellingPrice,
               costPrice: product.costPrice ?? "", stock: product.stock, unit: product.unit,
-              lowStockThreshold: product.lowStockThreshold, status: product.status,
+              lowStockThreshold: product.lowStockThreshold, status: product.status, cashierId: "",
             }
           : emptyForm
       );
@@ -39,12 +47,23 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
     }
   }, [isOpen, product]);
 
+  useEffect(() => {
+    if (isOpen && isCreating && !values.cashierId && cashiers.length === 1) {
+      setValues((v) => ({ ...v, cashierId: cashiers[0].id }));
+    }
+  }, [isOpen, isCreating, cashiers, values.cashierId]);
+
+  const needsCashier = isCreating && Number(values.stock) > 0;
+
   function validate(): boolean {
     const next: typeof errors = {};
     if (!values.name.trim()) next.name = "Product name is required.";
     if (!values.category.trim()) next.category = "Category is required.";
     if (values.sellingPrice === "" || Number(values.sellingPrice) < 0) next.sellingPrice = "Enter a valid price.";
-    if (values.stock === "" || Number(values.stock) < 0 || !Number.isFinite(Number(values.stock))) next.stock = "Enter a valid stock quantity.";
+    if (isCreating) {
+      if (values.stock === "" || Number(values.stock) < 0 || !Number.isFinite(Number(values.stock))) next.stock = "Enter a valid stock quantity.";
+      if (needsCashier && !values.cashierId) next.cashierId = "Select which cashier should receive this stock.";
+    }
     if (values.lowStockThreshold === "" || Number(values.lowStockThreshold) < 0) next.lowStockThreshold = "Enter a valid threshold.";
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -56,7 +75,11 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
     if (!validate()) return;
     setSubmitting(true);
     try {
-      await onSubmit(values);
+      // Editing never sends stock/cashierId — the backend's PUT endpoint
+      // doesn't accept them (stock only ever moves through Adjust Stock,
+      // which is cashier-scoped). Sending the product's current stock
+      // back here would be a no-op at best and misleading at worst.
+      await onSubmit(isCreating ? values : { ...values, stock: product!.stock, cashierId: undefined });
       onClose();
     } finally {
       setSubmitting(false);
@@ -104,15 +127,42 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <Input
-            label="Stock quantity" required type="number" min={0} value={values.stock} error={errors.stock}
-            onChange={(e) => setValues((v) => ({ ...v, stock: e.target.value === "" ? "" : Number(e.target.value) }))}
-          />
+          {isCreating ? (
+            <Input
+              label="Initial stock quantity" required type="number" min={0} value={values.stock} error={errors.stock}
+              onChange={(e) => setValues((v) => ({ ...v, stock: e.target.value === "" ? "" : Number(e.target.value) }))}
+            />
+          ) : (
+            <Input
+              label="Stock quantity" value={`${product!.stock} (total across cashiers)`} disabled
+              hint="Use Adjust Stock to change a specific cashier's stock."
+            />
+          )}
           <Select
             label="Unit" required options={unitOptions} value={values.unit}
             onChange={(e) => setValues((v) => ({ ...v, unit: e.target.value as ProductUnit }))}
           />
         </div>
+
+        {needsCashier && (
+          <Select
+            label="Cashier receiving this stock"
+            required
+            hint="Every cashier keeps their own separate stock — pick who this initial stock belongs to."
+            value={values.cashierId ?? ""}
+            error={errors.cashierId}
+            onChange={(e) => setValues((v) => ({ ...v, cashierId: e.target.value }))}
+            disabled={cashiersLoading}
+            options={[
+              { label: cashiersLoading ? "Loading cashiers…" : "Select a cashier…", value: "" },
+              ...cashiers.map((c) => ({ label: c.name, value: c.id })),
+            ]}
+          />
+        )}
+        {needsCashier && !cashiersLoading && cashiers.length === 0 && (
+          <p className="text-sm text-charcoal-muted">No active cashiers at this shop yet — add one first, or set initial stock to 0.</p>
+        )}
+        {needsCashier && cashiersError && <p role="alert" className="text-sm text-danger">{cashiersError}</p>}
 
         <Input
           label="Low stock threshold" required type="number" min={0} value={values.lowStockThreshold} error={errors.lowStockThreshold}

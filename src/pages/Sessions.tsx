@@ -141,7 +141,7 @@ function SessionHistorySection() {
     <div className="rounded-card bg-white shadow-soft p-4 sm:p-5">
       <FilterBar>
         <Select value={cashier} onChange={(e) => setCashier(e.target.value)} className="w-auto min-w-[150px]"
-          options={[{ label: "All cashiers", value: "all" }, ...cashiers.map((c) => ({ label: c.name, value: c.name }))]} />
+          options={[{ label: "All cashiers", value: "all" }, ...cashiers.map((c) => ({ label: c.name, value: c.id }))]} />
         <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto min-w-[150px]"
           options={[
             { label: "All statuses", value: "all" },

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Drawer, Button, Input, Select } from "../ui";
 import { ProductFormDrawer } from "../products/ProductFormDrawer";
+import { useActiveCashiers } from "../../hooks/useActiveCashiers";
 import type { PurchaseFormValues, PurchaseFormItemValues, ProductUnit, Product, ProductFormValues } from "../../types";
 
 const unitOptions: { label: string; value: ProductUnit }[] = [
@@ -44,9 +45,16 @@ export function PurchaseFormDrawer({
   const [supplierName, setSupplierName] = useState("");
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(today());
+  // Cashier-level inventory foundation: every catalog item in this
+  // purchase increases THIS cashier's own inventory — never a shop-wide
+  // pool. One picker for the whole purchase, since a single invoice
+  // realistically gets received by one cashier.
+  const [cashierId, setCashierId] = useState("");
   const [items, setItems] = useState<LineItemDraft[]>([emptyLine()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const { cashiers, isLoading: cashiersLoading, error: cashiersError } = useActiveCashiers(isOpen);
 
   // Row index (if any) currently requesting a brand-new catalog product —
   // reuses the same ProductFormDrawer the Products page uses, so "Add
@@ -56,10 +64,15 @@ export function PurchaseFormDrawer({
   useEffect(() => {
     if (isOpen) {
       setSupplierName(""); setInvoiceNumber(""); setPurchaseDate(today());
+      setCashierId("");
       setItems([emptyLine()]); setErrors({});
       setQuickAddRowIndex(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && !cashierId && cashiers.length === 1) setCashierId(cashiers[0].id);
+  }, [isOpen, cashiers, cashierId]);
 
   function updateItem(index: number, patch: Partial<LineItemDraft>) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, ...patch } : it)));
@@ -82,6 +95,7 @@ export function PurchaseFormDrawer({
     if (!supplierName.trim()) next.supplierName = "Supplier is required.";
     if (!invoiceNumber.trim()) next.invoiceNumber = "Invoice number is required.";
     if (!purchaseDate) next.purchaseDate = "Purchase date is required.";
+    if (!cashierId) next.cashierId = "Select which cashier receives this stock.";
     if (items.length === 0) next.items = "Add at least one product.";
     items.forEach((it, i) => {
       if (it.mode === "catalog") {
@@ -103,7 +117,7 @@ export function PurchaseFormDrawer({
     setSubmitting(true);
     try {
       const values: PurchaseFormValues = {
-        supplierName, invoiceNumber, purchaseDate,
+        supplierName, invoiceNumber, purchaseDate, cashierId,
         items: items.map((it): PurchaseFormItemValues => ({
           // Omitting productId entirely is what tells the backend this is
           // a purchase-only item — it never touches the Product Catalog.
@@ -156,6 +170,24 @@ export function PurchaseFormDrawer({
           <Input label="Invoice Number" required value={invoiceNumber} error={errors.invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="INV-1234" />
           <Input label="Purchase Date" required type="date" value={purchaseDate} error={errors.purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
         </div>
+
+        <Select
+          label="Cashier receiving this stock"
+          required
+          hint="Every cashier keeps their own separate stock — pick who this purchase's stock belongs to."
+          value={cashierId}
+          error={errors.cashierId}
+          onChange={(e) => setCashierId(e.target.value)}
+          disabled={cashiersLoading}
+          options={[
+            { label: cashiersLoading ? "Loading cashiers…" : "Select a cashier…", value: "" },
+            ...cashiers.map((c) => ({ label: c.name, value: c.id })),
+          ]}
+        />
+        {!cashiersLoading && cashiers.length === 0 && (
+          <p className="text-sm text-charcoal-muted">No active cashiers at this shop yet — add one before recording a purchase.</p>
+        )}
+        {cashiersError && <p role="alert" className="text-sm text-danger">{cashiersError}</p>}
 
         <div>
           <div className="flex items-center justify-between mb-2">

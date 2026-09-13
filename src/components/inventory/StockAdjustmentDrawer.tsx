@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Drawer, Button, Select, Input, Textarea, ConfirmModal } from "../ui";
+import { useActiveCashiers } from "../../hooks/useActiveCashiers";
+import { useCashierProductStock } from "../../hooks/useCashierProductStock";
 import type { Product, StockAdjustmentFormValues, AdjustmentType } from "../../types";
 
 const REASON_OPTIONS = ["Breakage / damage", "Stock count correction", "Expired / spoiled", "Returned by customer", "Other"];
@@ -14,6 +16,9 @@ interface StockAdjustmentDrawerProps {
 
 export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, presetProduct }: StockAdjustmentDrawerProps) {
   const [productId, setProductId] = useState("");
+  // Cashier-level inventory foundation: every adjustment targets a
+  // specific cashier's own inventory — never a shop-wide pool.
+  const [cashierId, setCashierId] = useState("");
   const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>("add");
   const [quantity, setQuantity] = useState<number | "">("");
   const [reason, setReason] = useState(REASON_OPTIONS[0]);
@@ -22,9 +27,12 @@ export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, pre
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const { cashiers, isLoading: cashiersLoading, error: cashiersError } = useActiveCashiers(isOpen);
+
   useEffect(() => {
     if (isOpen) {
       setProductId(presetProduct?.id ?? products[0]?.id ?? "");
+      setCashierId("");
       setAdjustmentType("add");
       setQuantity("");
       setReason(REASON_OPTIONS[0]);
@@ -34,15 +42,26 @@ export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, pre
     }
   }, [isOpen, presetProduct, products]);
 
+  // Default to the only active cashier once the list loads, so a
+  // single-cashier shop doesn't make the admin pick from a list of one.
+  useEffect(() => {
+    if (isOpen && !cashierId && cashiers.length === 1) setCashierId(cashiers[0].id);
+  }, [isOpen, cashiers, cashierId]);
+
   const selectedProduct = products.find((p) => p.id === productId) ?? null;
+  // The selected cashier's OWN current quantity for this product — never
+  // selectedProduct.stock, which is the shop-wide total across every
+  // cashier and would misrepresent what this specific adjustment starts
+  // from.
+  const { quantity: cashierStock, isLoading: cashierStockLoading } = useCashierProductStock(productId, cashierId);
   const qtyNum = Number(quantity) || 0;
-  const newStock = selectedProduct
-    ? Math.max(0, selectedProduct.stock + (adjustmentType === "add" ? qtyNum : -qtyNum))
-    : 0;
+  const newStock =
+    cashierStock != null ? Math.max(0, cashierStock + (adjustmentType === "add" ? qtyNum : -qtyNum)) : null;
 
   function handleReviewSubmit() {
     setError(null);
     if (!productId) return setError("Choose a product.");
+    if (!cashierId) return setError("Choose which cashier this adjustment applies to.");
     if (!qtyNum || qtyNum <= 0) return setError("Enter a quantity greater than zero.");
     setConfirming(true);
   }
@@ -51,7 +70,7 @@ export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, pre
     if (submitting) return; // guards against duplicate submissions
     setSubmitting(true);
     try {
-      await onSubmit({ productId, adjustmentType, quantity: qtyNum, reason, notes });
+      await onSubmit({ productId, cashierId, adjustmentType, quantity: qtyNum, reason, notes });
       setConfirming(false);
       onClose();
     } catch (err: any) {
@@ -68,7 +87,7 @@ export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, pre
         isOpen={isOpen}
         onClose={onClose}
         title="New Stock Adjustment"
-        subtitle="Corrects stock levels outside of normal sales or purchases."
+        subtitle="Corrects one cashier's stock levels outside of normal sales or purchases."
         footer={
           <>
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -82,8 +101,25 @@ export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, pre
             required
             value={productId}
             onChange={(e) => setProductId(e.target.value)}
-            options={products.map((p) => ({ label: `${p.name} (${p.stock} ${p.unit} in stock)`, value: p.id }))}
+            options={products.map((p) => ({ label: `${p.name} (${p.stock} ${p.unit} total across cashiers)`, value: p.id }))}
           />
+          <Select
+            label="Cashier"
+            required
+            hint="Every cashier keeps their own separate stock — this adjustment only ever affects theirs."
+            value={cashierId}
+            onChange={(e) => setCashierId(e.target.value)}
+            disabled={cashiersLoading}
+            options={[
+              { label: cashiersLoading ? "Loading cashiers…" : "Select a cashier…", value: "" },
+              ...cashiers.map((c) => ({ label: c.name, value: c.id })),
+            ]}
+          />
+          {!cashiersLoading && cashiers.length === 0 && (
+            <p className="text-sm text-charcoal-muted">No active cashiers at this shop yet — add one before adjusting stock.</p>
+          )}
+          {cashiersError && <p role="alert" className="text-sm text-danger">{cashiersError}</p>}
+
           <div className="grid grid-cols-2 gap-3">
             <Select
               label="Adjustment Type"
@@ -113,15 +149,19 @@ export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, pre
           />
           <Textarea label="Notes" hint="Optional context for this adjustment." value={notes} onChange={(e) => setNotes(e.target.value)} />
 
-          {selectedProduct && (
+          {selectedProduct && cashierId && (
             <div className="rounded-btn bg-ivory-soft p-4 grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Current Stock</p>
-                <p className="font-display font-bold text-charcoal">{selectedProduct.stock} {selectedProduct.unit}(s)</p>
+                <p className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">This Cashier's Current Stock</p>
+                <p className="font-display font-bold text-charcoal">
+                  {cashierStockLoading ? "…" : `${cashierStock ?? 0} ${selectedProduct.unit}(s)`}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">New Stock Preview</p>
-                <p className="font-display font-bold text-olive">{newStock} {selectedProduct.unit}(s)</p>
+                <p className="font-display font-bold text-olive">
+                  {newStock != null ? `${newStock} ${selectedProduct.unit}(s)` : "…"}
+                </p>
               </div>
             </div>
           )}
@@ -135,7 +175,7 @@ export function StockAdjustmentDrawer({ isOpen, onClose, onSubmit, products, pre
         onClose={() => setConfirming(false)}
         onConfirm={handleConfirm}
         title="Confirm stock adjustment?"
-        description={`${adjustmentType === "add" ? "Add" : "Remove"} ${qtyNum} ${selectedProduct?.unit ?? ""}(s) ${adjustmentType === "add" ? "to" : "from"} "${selectedProduct?.name}". Stock will change from ${selectedProduct?.stock} to ${newStock}.`}
+        description={`${adjustmentType === "add" ? "Add" : "Remove"} ${qtyNum} ${selectedProduct?.unit ?? ""}(s) ${adjustmentType === "add" ? "to" : "from"} "${selectedProduct?.name}" for ${cashiers.find((c) => c.id === cashierId)?.name ?? "this cashier"}. Their stock will change from ${cashierStock ?? 0} to ${newStock ?? "…"}.`}
         confirmLabel="Confirm Adjustment"
         isLoading={submitting}
       />

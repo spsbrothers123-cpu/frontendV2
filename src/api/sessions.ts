@@ -39,7 +39,12 @@ export interface SessionHistoryQuery {
 export async function fetchSessionHistory(query: SessionHistoryQuery): Promise<Paginated<SessionHistoryItem>> {
   if (USE_MOCK) {
     let items = [...store.sessionHistory];
-    if (query.cashier && query.cashier !== "all") items = items.filter((s) => s.cashier === query.cashier);
+    // query.cashier is a cashier ID (Phase 3) — resolve it to a display
+    // name against the mock cashiers list before filtering mock history.
+    if (query.cashier && query.cashier !== "all") {
+      const matchedName = store.cashiers.find((c) => c.id === query.cashier)?.name;
+      items = items.filter((s) => s.cashier === matchedName);
+    }
     if (query.status && query.status !== "all") items = items.filter((s) => s.status === query.status);
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 10;

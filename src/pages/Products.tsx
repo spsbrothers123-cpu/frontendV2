@@ -65,10 +65,10 @@ export default function Products() {
     }
   }
 
-  async function handleAdjustStock(delta: number) {
+  async function handleAdjustStock(delta: number, cashierId: string) {
     if (!adjustingProduct) return;
     try {
-      await productsApi.adjustProductStock(adjustingProduct.id, delta);
+      await productsApi.adjustProductStock(adjustingProduct.id, delta, cashierId);
       showToast("Stock updated.");
       load();
     } catch (err: any) {
