@@ -403,6 +403,7 @@ export interface ActiveSession {
 export interface SessionHistoryItem {
   id: string;
   cashier: string;
+  shop?: string;
   openingTime: string;
   closingTime: string;
   openingCash: number;
