@@ -2,10 +2,12 @@ import { apiClient, USE_MOCK } from "./client";
 import { delay, store, genId, getEffectiveInvitationCode } from "./mockStore";
 import type { InvitationCode } from "../types";
 
-// NOTE for backend integration: invitation codes are shop-scoped — the
-// backend must derive the shop from the authenticated admin's session,
-// never from anything the client sends, so one admin can never generate
-// or revoke a code belonging to another shop.
+// NOTE for backend integration: invitation codes are shop-scoped, and the
+// shop a code belongs to is what a signing-up cashier is permanently
+// assigned to. The target shop is passed EXPLICITLY on every call (never
+// inferred from the admin's mutable "active shop"), and the backend
+// re-verifies this admin owns it (AdminShopLink) before acting — so the
+// value sent here is a request, not an authority.
 
 const CODE_TTL_MINUTES = 30;
 
@@ -16,17 +18,19 @@ function generateSixDigitCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// expects GET /admin/invitation-codes/active
-// Returns the shop's current invitation code, or null if none exists.
-export async function getActiveInvitationCode(): Promise<InvitationCode | null> {
+// expects GET /admin/invitation-codes/active?shopId=
+// Returns that shop's current invitation code, or null if none exists.
+export async function getActiveInvitationCode(shopId: string): Promise<InvitationCode | null> {
   if (USE_MOCK) return delay(getEffectiveInvitationCode(), 350);
-  const { data } = await apiClient.get<{ data: InvitationCode | null }>("/admin/invitation-codes/active");
+  const { data } = await apiClient.get<{ data: InvitationCode | null }>("/admin/invitation-codes/active", {
+    params: { shopId },
+  });
   return data.data;
 }
 
-// expects POST /admin/invitation-codes
-// Invalidates any existing active code and mints a new one.
-export async function generateInvitationCode(): Promise<InvitationCode> {
+// expects POST /admin/invitation-codes { shopId }
+// Invalidates any existing active code for that shop and mints a new one.
+export async function generateInvitationCode(shopId: string): Promise<InvitationCode> {
   if (USE_MOCK) {
     const now = new Date();
     const expires = new Date(now.getTime() + CODE_TTL_MINUTES * 60_000);
@@ -40,7 +44,7 @@ export async function generateInvitationCode(): Promise<InvitationCode> {
     store.invitationCode = created;
     return delay(created, 500);
   }
-  const { data } = await apiClient.post<{ data: InvitationCode }>("/admin/invitation-codes");
+  const { data } = await apiClient.post<{ data: InvitationCode }>("/admin/invitation-codes", { shopId });
   return data.data;
 }
 
