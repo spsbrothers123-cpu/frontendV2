@@ -509,9 +509,8 @@ export interface InvitationCode {
   status: InvitationCodeStatus;
   createdAt: string;
   expiresAt: string;
-  // The shop a cashier who signs up with this code is permanently assigned
-  // to. Always supplied by the backend (never inferred client-side).
-  shop?: { id: string; name: string; location?: string };
+  // Deliberately no `shop`: a code is generic. The cashier's shop comes
+  // from the Branch Name they enter at signup, not from the code.
 }
 
 // ── Cashier management ─────────────────────────────────

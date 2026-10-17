@@ -8,6 +8,8 @@ import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { AdminLayout } from "./components/layout/AdminLayout";
 
 const Login = lazy(() => import("./pages/Login"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Products = lazy(() => import("./pages/Products"));
 const Customers = lazy(() => import("./pages/Customers"));
@@ -40,6 +42,8 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="/admin/login" element={<Login />} />
+              <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+              <Route path="/admin/reset-password" element={<ResetPassword />} />
 
               <Route
                 path="/admin"

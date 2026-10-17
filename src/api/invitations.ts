@@ -2,12 +2,14 @@ import { apiClient, USE_MOCK } from "./client";
 import { delay, store, genId, getEffectiveInvitationCode } from "./mockStore";
 import type { InvitationCode } from "../types";
 
-// NOTE for backend integration: invitation codes are shop-scoped, and the
-// shop a code belongs to is what a signing-up cashier is permanently
-// assigned to. The target shop is passed EXPLICITLY on every call (never
-// inferred from the admin's mutable "active shop"), and the backend
-// re-verifies this admin owns it (AdminShopLink) before acting — so the
-// value sent here is a request, not an authority.
+// NOTE for backend integration: invitation codes are GENERIC. A code only
+// authorizes someone to register as an Egg Mart cashier; it carries no
+// shop. The shop a cashier joins is decided at signup from the Branch Name
+// they type (backend: resolveOrCreateShopByLocation), and approval uses the
+// shopId stored on that cashier — never anything the Admin app has selected.
+// So none of these calls send a shopId, and the Global Shop Selector has no
+// influence on them. The backend scopes a code to the requesting admin
+// (createdByAdminId).
 
 const CODE_TTL_MINUTES = 30;
 
@@ -18,19 +20,17 @@ function generateSixDigitCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// expects GET /admin/invitation-codes/active?shopId=
-// Returns that shop's current invitation code, or null if none exists.
-export async function getActiveInvitationCode(shopId: string): Promise<InvitationCode | null> {
+// expects GET /admin/invitation-codes/active
+// Returns this admin's current invitation code, or null if none exists.
+export async function getActiveInvitationCode(): Promise<InvitationCode | null> {
   if (USE_MOCK) return delay(getEffectiveInvitationCode(), 350);
-  const { data } = await apiClient.get<{ data: InvitationCode | null }>("/admin/invitation-codes/active", {
-    params: { shopId },
-  });
+  const { data } = await apiClient.get<{ data: InvitationCode | null }>("/admin/invitation-codes/active");
   return data.data;
 }
 
-// expects POST /admin/invitation-codes { shopId }
-// Invalidates any existing active code for that shop and mints a new one.
-export async function generateInvitationCode(shopId: string): Promise<InvitationCode> {
+// expects POST /admin/invitation-codes (no body)
+// Invalidates this admin's existing active code and mints a new generic one.
+export async function generateInvitationCode(): Promise<InvitationCode> {
   if (USE_MOCK) {
     const now = new Date();
     const expires = new Date(now.getTime() + CODE_TTL_MINUTES * 60_000);
@@ -44,7 +44,7 @@ export async function generateInvitationCode(shopId: string): Promise<Invitation
     store.invitationCode = created;
     return delay(created, 500);
   }
-  const { data } = await apiClient.post<{ data: InvitationCode }>("/admin/invitation-codes", { shopId });
+  const { data } = await apiClient.post<{ data: InvitationCode }>("/admin/invitation-codes");
   return data.data;
 }
 

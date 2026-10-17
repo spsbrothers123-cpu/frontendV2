@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate, useLocation, Navigate } from "react-router-dom";
-import { Loader2, Lock, Mail } from "lucide-react";
+import { Link, useNavigate, useLocation, Navigate } from "react-router-dom";
+import { Loader2, Lock, Mail, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui";
 
@@ -11,6 +11,7 @@ export default function Login() {
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -89,14 +90,29 @@ export default function Login() {
                 <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-charcoal-muted" />
                 <input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full min-h-[44px] rounded-btn border border-charcoal/12 bg-white pl-10 pr-3.5 py-2.5 text-sm focus:border-yolk-500 outline-none transition-colors duration-150"
+                  className="w-full min-h-[44px] rounded-btn border border-charcoal/12 bg-white pl-10 pr-10 py-2.5 text-sm focus:border-yolk-500 outline-none transition-colors duration-150"
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  tabIndex={-1}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-charcoal-muted hover:text-charcoal transition-colors duration-150"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              <div className="text-right mt-1.5">
+                <Link to="/admin/forgot-password" className="text-xs font-medium text-yolk-600 hover:underline">
+                  Forgot password?
+                </Link>
               </div>
             </div>
 

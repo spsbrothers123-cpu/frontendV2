@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { KeyRound, Check } from "lucide-react";
 import { Button, StatusBadge, ErrorState, ConfirmModal } from "../ui";
 import { useToast } from "../../context/ToastContext";
-import { useShop } from "../../context/ShopContext";
 import * as invitationsApi from "../../api/invitations";
 import type { InvitationCode } from "../../types";
 
@@ -12,20 +11,14 @@ import type { InvitationCode } from "../../types";
 // UI notices that transition without a manual refresh.
 const POLL_MS = 20_000;
 
-// The Cashiers page is a deliberate exception to the Global Shop Selector
-// (it is NOT remounted on a shop switch — see AdminLayout), but an
-// invitation code is inherently per-shop: whoever signs up with it joins
-// exactly one shop. So this section follows the selector explicitly: it
-// asks for / generates the code of the currently selected shop, refetches
-// whenever that changes, and always shows which shop the code belongs to.
+// Invitation codes are generic and completely independent of the Global
+// Shop Selector (Phase 2 spec §11). A code only authorizes someone to
+// register as a cashier; the shop they land in is decided at signup from
+// the Branch Name they type, and approval uses the shopId stored on their
+// request. So this section never reads the selector, never sends a shopId,
+// and never refetches when the admin switches shops.
 export function InvitationCodeSection() {
   const { showToast } = useToast();
-  const { selectedShop, selectedShopId, isLoading: shopsLoading } = useShop();
-  // Guards against a slow response for the previously selected shop landing
-  // after the admin has already switched — that would show shop A's code
-  // under shop B's name.
-  const activeShopRef = useRef<string | null>(selectedShopId);
-  activeShopRef.current = selectedShopId;
   const [code, setCode] = useState<InvitationCode | null>(null);
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -34,26 +27,14 @@ export function InvitationCodeSection() {
   const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
-    if (!selectedShopId) return;
-    const requestedFor = selectedShopId;
     setState("loading");
     try {
-      const result = await invitationsApi.getActiveInvitationCode(requestedFor);
-      if (activeShopRef.current !== requestedFor) return;
-      setCode(result);
+      setCode(await invitationsApi.getActiveInvitationCode());
       setState("success");
     } catch {
-      if (activeShopRef.current !== requestedFor) return;
       setState("error");
     }
-  }, [selectedShopId]);
-
-  // Drop the previous shop's code immediately on a switch so it can never
-  // be copied while the new shop's code is still loading.
-  useEffect(() => {
-    setCode(null);
-    setCopied(false);
-  }, [selectedShopId]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -66,12 +47,9 @@ export function InvitationCodeSection() {
   }, [isActive, load]);
 
   async function handleGenerate() {
-    if (!selectedShopId) return;
-    const requestedFor = selectedShopId;
     setIsGenerating(true);
     try {
-      const created = await invitationsApi.generateInvitationCode(requestedFor);
-      if (activeShopRef.current !== requestedFor) return;
+      const created = await invitationsApi.generateInvitationCode();
       setCode(created);
       setCopied(false);
       showToast(isActive ? "New code generated — the previous code no longer works." : "Invitation code generated.", "success");
@@ -117,23 +95,19 @@ export function InvitationCodeSection() {
         <div>
           <h2 className="font-display font-bold text-lg text-charcoal">Invitation Code</h2>
           <p className="text-sm text-charcoal-muted mt-0.5">
-            Share this code with new cashiers so they can sign up for{" "}
-            <span className="font-semibold text-charcoal">{code?.shop?.name ?? selectedShop?.name ?? "the selected shop"}</span>.
-            Change the shop from the selector at the top to create a code for a different shop.
+            Share this code with new cashiers so they can sign up. Each cashier
+            enters their own Branch Name at signup, which decides the shop they join.
           </p>
         </div>
       </div>
 
       <div className="mt-4">
-        {!shopsLoading && !!selectedShopId && state === "error" && <ErrorState message="Couldn't load the invitation code." onRetry={load} />}
+        {state === "error" && <ErrorState message="Couldn't load the invitation code." onRetry={load} />}
 
-        {(state === "loading" || shopsLoading) && <div className="h-[68px] rounded-btn bg-charcoal/5 animate-pulse" />}
+        {state === "loading" && <div className="h-[68px] rounded-btn bg-charcoal/5 animate-pulse" />}
 
-        {!shopsLoading && !selectedShopId && (
-          <p className="text-sm text-charcoal-muted">Select a shop to manage its invitation code.</p>
-        )}
 
-        {!shopsLoading && !!selectedShopId && state === "success" && isActive && code && (
+        {state === "success" && isActive && code && (
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-btn bg-ivory-soft px-4 py-3.5">
             <div className="flex items-center gap-3">
               <span className="font-display font-extrabold text-2xl tracking-[0.25em] text-charcoal">{code.code}</span>
@@ -152,7 +126,7 @@ export function InvitationCodeSection() {
           </div>
         )}
 
-        {!shopsLoading && !!selectedShopId && state === "success" && !isActive && (
+        {state === "success" && !isActive && (
           <div className="flex flex-wrap items-center justify-between gap-4 rounded-btn bg-ivory-soft px-4 py-3.5">
             <div className="flex items-center gap-2.5">
               <p className="text-sm text-charcoal-muted">

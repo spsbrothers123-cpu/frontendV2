@@ -59,6 +59,32 @@ export async function fetchCurrentUser(): Promise<AdminUser> {
   return data;
 }
 
+// NOTE for backend integration: expects POST /auth/forgot-password
+// { email } -> a generic { success, message } response regardless of
+// whether the email is on file (no user enumeration). Emails a one-time
+// reset link when a matching, active admin account exists.
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  if (USE_MOCK) {
+    return delay({ message: "If an account exists for that email, we've sent a password reset link." }, 500);
+  }
+  const { data } = await apiClient.post<{ message: string }>("/auth/forgot-password", { email });
+  return data;
+}
+
+// NOTE for backend integration: expects POST /auth/reset-password
+// { token, password } -> { success, message }. `token` comes from the
+// query string of the reset link the email points at.
+export async function resetPassword(token: string, password: string): Promise<{ message: string }> {
+  if (USE_MOCK) {
+    if (!password || password.length < 8) {
+      return Promise.reject({ status: 422, message: "Password must be at least 8 characters." });
+    }
+    return delay({ message: "Your password has been reset. You can now log in." }, 500);
+  }
+  const { data } = await apiClient.post<{ message: string }>("/auth/reset-password", { token, password });
+  return data;
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
