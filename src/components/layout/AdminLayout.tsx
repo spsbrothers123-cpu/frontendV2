@@ -9,8 +9,9 @@ import { useShop } from "../../context/ShopContext";
 // Selector (Phase 3 spec §1/§2): both span every shop the admin owns and
 // never depend on which shop is currently active, so switching shops must
 // not remount them or wipe their own local state (active tab, selected
-// cashier filter, page number, etc).
-const SHOP_INDEPENDENT_PATHS = ["/admin/cashiers", "/admin/sessions"];
+// cashier filter, page number, etc). Consolidation joins them: it has its
+// own independent shop filter and must keep it when the global shop changes.
+const SHOP_INDEPENDENT_PATHS = ["/admin/cashiers", "/admin/sessions", "/admin/consolidation"];
 
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);

@@ -11,6 +11,7 @@ import {
   History,
   MonitorSmartphone,
   UserCog,
+  Layers,
   Settings,
   UserCircle,
   LogOut,
@@ -44,6 +45,7 @@ const phase2Nav: NavItem[] = [
   { label: "History", to: "/admin/history", icon: <History size={19} /> },
   { label: "Sessions", to: "/admin/sessions", icon: <MonitorSmartphone size={19} /> },
   { label: "Cashiers", to: "/admin/cashiers", icon: <UserCog size={19} /> },
+  { label: "Consolidation", to: "/admin/consolidation", icon: <Layers size={19} /> },
 ];
 
 function EggLogo({ collapsed }: { collapsed?: boolean }) {
