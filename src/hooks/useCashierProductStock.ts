@@ -2,28 +2,34 @@ import { useEffect, useState } from "react";
 import { fetchProductCashierBreakdown } from "../api/inventory";
 
 /**
- * Cashier-level inventory foundation: a specific cashier's CURRENT
- * quantity for a specific product — never Product.stock (the shop-wide
- * total across every cashier). Used to show an accurate "current stock" /
- * "new stock preview" once both a product and a cashier are chosen in an
- * adjustment flow; before that, there's nothing scoped enough to show.
+ * Current stock of one product AT THE SELECTED BRANCH — never Product.stock
+ * (the all-branch aggregate). Used for the "current stock" / over-removal
+ * guard in adjustment flows.
+ *
+ * Reads `branchStock` from GET /admin/inventory/:id/by-cashier. After the
+ * BranchInventory cutover that response has no per-cashier rows, so looking
+ * a Cashier up in `byCashier` would wrongly report 0 and block every
+ * removal. `totalStock` is the fallback for responses without `branchStock`.
+ *
+ * `_cashierId` is kept only so existing callers keep compiling; stock is
+ * branch-owned and the value is not used.
  */
-export function useCashierProductStock(productId: string | null | undefined, cashierId: string | null | undefined) {
+export function useCashierProductStock(productId: string | null | undefined, _cashierId?: string | null) {
   const [quantity, setQuantity] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    if (!productId || !cashierId) {
+    if (!productId) {
       setQuantity(null);
       return;
     }
     let cancelled = false;
+    setQuantity(null);
     setIsLoading(true);
     fetchProductCashierBreakdown(productId)
       .then((breakdown) => {
         if (cancelled) return;
-        const row = breakdown.byCashier.find((c) => c.cashierId === cashierId);
-        setQuantity(row?.quantity ?? 0);
+        setQuantity(breakdown.branchStock ?? breakdown.totalStock);
       })
       .catch(() => {
         if (!cancelled) setQuantity(null);
@@ -34,7 +40,7 @@ export function useCashierProductStock(productId: string | null | undefined, cas
     return () => {
       cancelled = true;
     };
-  }, [productId, cashierId]);
+  }, [productId]);
 
   return { quantity, isLoading };
 }

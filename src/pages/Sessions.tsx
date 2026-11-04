@@ -1,25 +1,51 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Users, CircleDollarSign } from "lucide-react";
 import { PageHeader } from "../components/layout/PageHeader";
-import { DataTable, ErrorState, EmptyState, FilterBar, Select, Pagination, StatusBadge, CardSkeleton } from "../components/ui";
+import { DataTable, ErrorState, EmptyState, FilterBar, Select, Pagination, StatusBadge, CardSkeleton, Tabs } from "../components/ui";
 import { formatCurrency } from "../components/ui/MiniChart";
 import type { Column } from "../components/ui/DataTable";
 import { SessionDetailsDrawer } from "../components/sessions/SessionDetailsDrawer";
+import { RecoveryRequestsPanel } from "../components/sessions/RecoveryRequestsPanel";
 import * as sessionsApi from "../api/sessions";
 import { fetchCashiers } from "../api/cashiers";
 import type { ActiveSession, SessionHistoryItem, SessionDetails, CashierAccount } from "../types";
 
 const PAGE_SIZE = 8;
 
+const SESSION_TABS = [
+  { label: "Register Sessions", value: "sessions" },
+  { label: "Recovery Requests", value: "recovery" },
+];
+
 export default function Sessions() {
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "recovery" ? "recovery" : "sessions";
+
+  function changeTab(value: string) {
+    setParams(value === "recovery" ? { tab: "recovery" } : {}, { replace: true });
+  }
+
   return (
     <div>
-      <PageHeader title="Sessions" subtitle="Cashier register sessions — active and historical." />
-      <ActiveSessionSection />
-      <div className="mt-8">
-        <h2 className="font-display font-bold text-lg text-charcoal mb-4">Session History</h2>
-        <SessionHistorySection />
+      <PageHeader
+        title="Sessions"
+        subtitle={tab === "recovery" ? "Cashier password recovery requests — all shops." : "Cashier register sessions — active and historical."}
+      />
+      <div className="mb-6 overflow-x-auto">
+        <Tabs tabs={SESSION_TABS} active={tab} onChange={changeTab} />
       </div>
+      {tab === "recovery" ? (
+        <RecoveryRequestsPanel />
+      ) : (
+        <>
+          <ActiveSessionSection />
+          <div className="mt-8">
+            <h2 className="font-display font-bold text-lg text-charcoal mb-4">Session History</h2>
+            <SessionHistorySection />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ const History = lazy(() => import("./pages/History"));
 const Sessions = lazy(() => import("./pages/Sessions"));
 const Cashiers = lazy(() => import("./pages/Cashiers"));
 const Consolidation = lazy(() => import("./pages/Consolidation"));
+const UpiManagement = lazy(() => import("./pages/UpiManagement"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Profile = lazy(() => import("./pages/Profile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -68,6 +69,7 @@ export default function App() {
                 <Route path="sessions" element={<Sessions />} />
                 <Route path="cashiers" element={<Cashiers />} />
                 <Route path="consolidation" element={<Consolidation />} />
+                <Route path="upi" element={<UpiManagement />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
               </Route>

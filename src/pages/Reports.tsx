@@ -98,7 +98,7 @@ function SalesReportTab({ range }: { range: ReportRange }) {
     <div>
       <div className="flex justify-end mb-4"><ExportButtons reportType="sales" range={range} /></div>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard icon={<ShoppingCart size={17} className="text-yolk-700" />} iconBg="bg-yolk-100" label="Total Sales" value={formatCurrency(data.totalSales)} trend={0} />
+        <StatCard icon={<ShoppingCart size={17} className="text-yolk-700" />} iconBg="bg-yolk-100" label="Net Sales" value={formatCurrency(data.totalSales)} trend={0} />
         <StatCard icon={<TrendingUp size={17} className="text-olive" />} iconBg="bg-olive-soft" label="Revenue" value={formatCurrency(data.revenue)} trend={0} />
         <StatCard icon={<Receipt size={17} className="text-amber" />} iconBg="bg-amber-soft" label="Number of Bills" value={String(data.billCount)} trend={0} />
         <StatCard icon={<Wallet size={17} className="text-danger" />} iconBg="bg-danger-soft" label="Average Bill Value" value={formatCurrency(data.averageBillValue)} trend={0} />

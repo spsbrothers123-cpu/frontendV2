@@ -89,6 +89,45 @@ export interface Product {
   status: ProductStatus;
   createdAt: string;
   updatedAt: string;
+  // Phase 2 — present on GET /admin/products, describing the SELECTED branch
+  // (`sellingPrice` above remains the common default price). Optional because
+  // create/update responses don't include them.
+  assigned?: boolean;
+  priceOverride?: number | null;
+  effectivePrice?: number;
+  // Stage 3.3 — present on GET /admin/products and GET /admin/inventory:
+  // true when a BranchInventory row exists for the selected branch (a genuine
+  // 0 included), false when none does. Absent from create/update responses.
+  inventoryRecorded?: boolean;
+}
+
+// Phase 2 — which assignment state GET /admin/products lists for the
+// selected branch (backend default: "assigned").
+export type ProductAssignmentFilter = "assigned" | "unassigned" | "all";
+
+// Phase 2 — one branch's row in GET /admin/branch-products/:productId.
+export interface BranchAssignment {
+  shopId: string;
+  name: string;
+  code: string;
+  location: string | null;
+  assigned: boolean;
+  priceOverride: number | null;
+  effectivePrice: number;
+  hasAssignmentRecord: boolean;
+  assignedAt: string | null;
+  unassignedAt: string | null;
+}
+
+// Phase 2 — response of GET /admin/branch-products/:productId (every branch).
+export interface ProductBranchAssignments {
+  productId: string;
+  productName: string;
+  // Catalog-wide flag, independent of per-branch assignment.
+  status: ProductStatus;
+  // Common default price.
+  sellingPrice: number;
+  branches: BranchAssignment[];
 }
 
 export interface ProductFormValues {
@@ -172,8 +211,25 @@ export interface PurchaseLineItem {
   total: number;
 }
 
+// Stage 3.4 — the linked reversal record (GET /admin/purchases). The original
+// purchase is never edited; a reversal is a separate, append-only record.
+export interface PurchaseReversalInfo {
+  id: string;
+  reason: string;
+  reversedAt: string;
+  reversedById: string | null;
+}
+
 export interface Purchase {
   id: string;
+  // Stage 3.4 — the branch that RECEIVED the stock. Fixed when the purchase is
+  // saved (the backend rejects any change); never derived from the Global Shop
+  // Selector. Optional only because demo-mode rows predate it.
+  receivingShopId?: string;
+  receivingBranchName?: string;
+  // True once a reversal exists. `status` is never rewritten by a reversal.
+  reversed?: boolean;
+  reversal?: PurchaseReversalInfo | null;
   invoiceNumber: string;
   supplierName: string;
   purchaseDate: string;
@@ -198,10 +254,13 @@ export interface PurchaseFormValues {
   supplierName: string;
   invoiceNumber: string;
   purchaseDate: string;
-  // Cashier-level inventory foundation: every catalog item in this
-  // purchase increases THIS cashier's own inventory — never a shop-wide
-  // pool, even though a single purchase covers the whole invoice.
-  cashierId: string;
+  // The branch that receives this stock. Explicitly chosen by the Admin
+  // (never defaulted from the Global Shop Selector) and required by
+  // POST /admin/purchases; immutable once the purchase is saved.
+  receivingShopId: string;
+  // Optional actor metadata (the receiving branch's single Cashier); the
+  // backend requires it only before the BranchInventory cutover.
+  cashierId?: string;
   items: PurchaseFormItemValues[];
 }
 
@@ -232,24 +291,30 @@ export type AdjustmentType = "add" | "remove";
 
 export interface StockAdjustmentFormValues {
   productId: string;
-  // Cashier-level inventory foundation: every adjustment targets a
-  // specific cashier's own inventory — never a shop-wide pool.
-  cashierId: string;
+  // Optional actor metadata: stock belongs to the branch, and the backend
+  // requires a Cashier here only BEFORE the BranchInventory cutover. Omitted
+  // when the branch's single Cashier could not be resolved.
+  cashierId?: string;
   adjustmentType: AdjustmentType;
   quantity: number | "";
   reason: string;
   notes?: string;
 }
 
-// Cashier-level inventory foundation: one product's stock, broken down by
-// the cashier who owns each portion of it. Never merge these into a single
-// number in the UI — that's exactly the leakage the isolation requirement
-// forbids. Powers the "which cashier?" pickers and any per-cashier detail
-// view.
-export interface CashierStockBreakdown {
+// One product's stock AT THE SELECTED BRANCH (GET /admin/inventory/:id/by-cashier;
+// the path keeps its legacy name). Stock belongs to the branch: use
+// `branchStock`. `byCashier` is a legacy, pre-cutover split and is always
+// empty once BranchInventory is authoritative — never sum or derive branch
+// stock from it.
+export interface BranchStockBreakdown {
   productId: string;
   productName: string;
   totalStock: number;
+  // The selected BRANCH's quantity (GET /admin/inventory/:id/by-cashier).
+  // After the cutover `byCashier` is empty — this is the number to use.
+  branchStock?: number;
+  // Stage 3.3 — false when the branch has no BranchInventory row for it.
+  inventoryRecorded?: boolean;
   byCashier: { cashierId: string; cashierName: string; quantity: number }[];
 }
 
@@ -351,6 +416,8 @@ export interface HistoryRecord {
   amount: number;
   paymentMethod: string;
   createdBy: string;
+  // Cancelled sales stay in the feed; totals must skip them. Absent on older backends.
+  status?: "Completed" | "Cancelled";
 }
 
 export interface SaleDetails {
@@ -361,6 +428,29 @@ export interface SaleDetails {
   paymentMethod: string;
   total: number;
   createdBy: string;
+  // GET /admin/history/sales/:reference — cancellation state. All optional:
+  // the cancellation fields are present only on cancelled bills.
+  id?: string;
+  status?: "Completed" | "Cancelled" | "Held";
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
+  cancelledAfterSessionClose?: boolean;
+}
+
+// POST /admin/bills/:id/cancel response (Central Admin only).
+export interface BillCancellationResult {
+  id: string;
+  billNumber: string;
+  status: "cancelled";
+  cancelledAt: string;
+  cancelReason: string;
+  cancelledAfterSessionClose: boolean;
+  total: number;
+  // Number of bill line items whose stock was returned to the bill's branch.
+  stockRestored: number;
+  // Credit amount reversed (0 when the bill had no credit payment).
+  creditReversed: number;
 }
 
 export interface PurchaseDetails {

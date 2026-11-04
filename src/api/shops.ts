@@ -35,3 +35,13 @@ export async function switchShop(shopId: string): Promise<Shop> {
   const { data } = await apiClient.post<ApiEnvelope<Shop>>("/admin/shops/switch", { shopId });
   return data.data;
 }
+
+// Phase 2 Stage 2.4/2.8: the ONLY way a branch comes into existence (Cashier
+// signup can no longer create one). Central Admin only — enforced by the
+// backend. It does not change the admin's currently selected shop.
+// NOTE: expects POST /admin/shops { location } -> { success, data: Shop }.
+export async function createBranch(location: string): Promise<Shop> {
+  if (USE_MOCK) throw { status: 501, message: "Creating a branch requires the live backend — turn off demo mode to use it." };
+  const { data } = await apiClient.post<ApiEnvelope<Shop>>("/admin/shops", { location });
+  return data.data;
+}

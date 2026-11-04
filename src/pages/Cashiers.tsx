@@ -16,6 +16,7 @@ import { useToast } from "../context/ToastContext";
 import * as cashiersApi from "../api/cashiers";
 import { CashierEditDrawer } from "../components/cashiers/CashierEditDrawer";
 import { InvitationCodeSection } from "../components/cashiers/InvitationCodeSection";
+import { activeCashierAtBranch, branchCashierError } from "../components/cashiers/branchCashierRules";
 import type { CashierRequest, CashierAccount, CashierUpdateValues } from "../types";
 
 const REQUEST_STATUS_LABEL: Record<CashierRequest["status"], string> = {
@@ -51,11 +52,19 @@ function RequestsSection() {
   const [approving, setApproving] = useState<CashierRequest | null>(null);
   const [rejecting, setRejecting] = useState<CashierRequest | null>(null);
   const [reason, setReason] = useState("");
+  // Used only to warn that a branch already has its one cashier. Failing to
+  // load it is not fatal — the backend still refuses a second cashier.
+  const [cashiers, setCashiers] = useState<CashierAccount[]>([]);
 
   const load = useCallback(async () => {
     setState("loading");
     try {
-      setItems(await cashiersApi.fetchCashierRequests());
+      const [requests, current] = await Promise.all([
+        cashiersApi.fetchCashierRequests(),
+        cashiersApi.fetchCashiers().catch(() => [] as CashierAccount[]),
+      ]);
+      setItems(requests);
+      setCashiers(current);
       setState("success");
     } catch {
       setState("error");
@@ -72,8 +81,10 @@ function RequestsSection() {
       showToast("Cashier approved successfully.", "success");
       setApproving(null);
       await load();
-    } catch {
-      showToast("Couldn't approve this request. Please try again.", "error");
+    } catch (err) {
+      showToast(branchCashierError(err, "Couldn't approve this request. Please try again."), "error");
+      setApproving(null);
+      await load();
     } finally {
       setActingId(null);
     }
@@ -88,8 +99,8 @@ function RequestsSection() {
       setRejecting(null);
       setReason("");
       await load();
-    } catch {
-      showToast("Couldn't reject this request. Please try again.", "error");
+    } catch (err) {
+      showToast(branchCashierError(err, "Couldn't reject this request. Please try again."), "error");
     } finally {
       setActingId(null);
     }
@@ -108,10 +119,10 @@ function RequestsSection() {
       ),
     },
     { key: "username", header: "Username", render: (r) => <span className="text-charcoal-muted">{r.username}</span> },
-    { key: "shop", header: "Shop", render: (r) => <span>{r.shop?.name ?? "—"}</span> },
+    { key: "shop", header: "Branch", render: (r) => <span>{r.shop?.name ?? "—"}</span> },
     {
       key: "branchName",
-      header: "Branch Name",
+      header: "Signup branch name",
       render: (r) => <span className="text-charcoal-muted">{r.branchName || "—"}</span>,
     },
     {
@@ -146,14 +157,23 @@ function RequestsSection() {
         rows={items}
         rowKey={(r) => r.id}
         isLoading={state === "loading"}
-        actionsRender={(r) =>
-          r.status === "PENDING_ADMIN_APPROVAL" ? (
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="primary" disabled={actingId === r.id} onClick={() => setApproving(r)}>Approve</Button>
-              <Button size="sm" variant="danger" disabled={actingId === r.id} onClick={() => setRejecting(r)}>Reject</Button>
+        actionsRender={(r) => {
+          if (r.status !== "PENDING_ADMIN_APPROVAL") return null;
+          const holder = activeCashierAtBranch(cashiers, r.shop?.id, r.id);
+          return (
+            <div className="flex flex-col items-start gap-1.5">
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="primary" disabled={actingId === r.id || !!holder} onClick={() => setApproving(r)}>Approve</Button>
+                <Button size="sm" variant="danger" disabled={actingId === r.id} onClick={() => setRejecting(r)}>Reject</Button>
+              </div>
+              {holder && (
+                <p className="text-xs text-charcoal-muted max-w-[16rem]">
+                  {r.shop?.name} already has {holder.name}. Suspend them under Cashiers to approve a replacement.
+                </p>
+              )}
             </div>
-          ) : null
-        }
+          );
+        }}
       />
 
       <ConfirmModal
@@ -161,7 +181,7 @@ function RequestsSection() {
         onClose={() => setApproving(null)}
         onConfirm={confirmApprove}
         title="Approve this cashier account?"
-        description={`${approving?.name ?? "This cashier"} will be able to log in with their own credentials once approved.`}
+        description={`${approving?.name ?? "This cashier"} will become the one cashier for ${approving?.shop?.name ?? "this branch"} and can log in once approved. Stock belongs to the branch and is unaffected.`}
         confirmLabel="Approve"
         isLoading={actingId === approving?.id}
       />
@@ -235,8 +255,10 @@ function CashiersSection() {
       setItems((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
       showToast(updated.active ? `${updated.name} reactivated.` : `${updated.name} suspended.`, updated.active ? "success" : "info");
       setConfirming(null);
-    } catch {
-      showToast("Couldn't update this cashier. Please try again.", "error");
+    } catch (err) {
+      showToast(branchCashierError(err, "Couldn't update this cashier. Please try again."), "error");
+      setConfirming(null);
+      await load();
     } finally {
       setActingId(null);
     }
@@ -255,10 +277,10 @@ function CashiersSection() {
       ),
     },
     { key: "phone", header: "Phone", render: (c) => <span className="text-charcoal-muted">{c.phone || "—"}</span> },
-    { key: "shop", header: "Shop", render: (c) => <span>{c.shop?.name ?? "—"}</span> },
+    { key: "shop", header: "Branch", render: (c) => <span>{c.shop?.name ?? "—"}</span> },
     {
       key: "branchName",
-      header: "Branch Name",
+      header: "Signup branch name",
       render: (c) => <span className="text-charcoal-muted">{c.branchName || "—"}</span>,
     },
     { key: "status", header: "Status", render: (c) => <StatusBadge status={c.active ? "Active" : "Inactive"} /> },
@@ -305,8 +327,8 @@ function CashiersSection() {
         title={confirming?.active ? `Suspend ${confirming?.name}?` : `Reactivate ${confirming?.name}?`}
         description={
           confirming?.active
-            ? "They'll be signed out immediately and won't be able to log in until reactivated."
-            : "They'll be able to log in and use the register again."
+            ? "They'll be signed out immediately and can't log in until reactivated. Their bills, sessions and history are kept, and the branch's stock stays with the branch. The branch can then accept a replacement cashier."
+            : "They'll be able to log in again. This only works if the branch has no other cashier."
         }
         confirmLabel={confirming?.active ? "Suspend" : "Reactivate"}
         isDangerous={confirming?.active}

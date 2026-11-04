@@ -12,44 +12,79 @@ import * as inventoryApi from "../api/inventory";
 import * as productsApi from "../api/products";
 import type { Product, InventoryKpis, StockMovement, LowStockItem, StockAdjustmentFormValues } from "../types";
 import { useToast } from "../context/ToastContext";
+import { useShop } from "../context/ShopContext";
+import { useRequestGuard } from "../hooks/useRequestGuard";
+import { getStockRecordState, NO_RECORD_HINT } from "../lib/stockRecord";
 
 type TabValue = "overview" | "movement" | "adjustments" | "alerts";
 const PAGE_SIZE = 8;
 
+// This page is keyed by the selected shop in AdminLayout, so changing the
+// Global Shop Selector remounts it and every load below refetches for the new
+// branch. The request guards additionally stop a slow response for an older
+// filter/page from overwriting a newer one.
 export default function Inventory() {
   const { showToast } = useToast();
+  const { selectedShop } = useShop();
   const [tab, setTab] = useState<TabValue>("overview");
 
   const [kpis, setKpis] = useState<InventoryKpis | null>(null);
   const [kpisState, setKpisState] = useState<"loading" | "success" | "error">("loading");
+  const kpiGuard = useRequestGuard();
 
-  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  // Products offered by the adjustment form (every product assigned here).
+  const [adjustable, setAdjustable] = useState<Product[]>([]);
+  const adjustableGuard = useRequestGuard();
+
+  // One adjustment drawer for the whole page, so the per-row "Adjust" action
+  // can open it already pointed at that product.
+  const [drawer, setDrawer] = useState<{ open: boolean; preset: Product | null }>({ open: false, preset: null });
+  // Bumped after every successful adjustment so the open tab refetches.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const loadKpis = useCallback(async () => {
+    const ticket = kpiGuard.begin();
     setKpisState("loading");
     try {
-      setKpis(await inventoryApi.fetchInventoryKpis());
+      const res = await inventoryApi.fetchInventoryKpis();
+      if (!kpiGuard.isCurrent(ticket)) return;
+      setKpis(res);
       setKpisState("success");
     } catch {
-      setKpisState("error");
+      if (kpiGuard.isCurrent(ticket)) setKpisState("error");
     }
-  }, []);
+  }, [kpiGuard]);
 
-  const loadAllProducts = useCallback(async () => {
+  const loadAdjustable = useCallback(async () => {
+    const ticket = adjustableGuard.begin();
     try {
-      const res = await productsApi.fetchProducts({ page: 1, pageSize: 500 });
-      setAllProducts(res.items);
+      const items = await inventoryApi.fetchAdjustableProducts();
+      if (adjustableGuard.isCurrent(ticket)) setAdjustable(items);
     } catch {
-      // adjustment drawer will just show an empty product list; the
-      // Overview tab surfaces the real error state separately.
+      if (adjustableGuard.isCurrent(ticket)) showToast("Couldn't load the product list for stock adjustments.", "error");
     }
-  }, []);
+  }, [adjustableGuard, showToast]);
 
-  useEffect(() => { loadKpis(); loadAllProducts(); }, [loadKpis, loadAllProducts]);
+  useEffect(() => { loadKpis(); loadAdjustable(); }, [loadKpis, loadAdjustable]);
+
+  async function handleAdjustmentSubmit(values: StockAdjustmentFormValues) {
+    // A rejection (403, 409 INSUFFICIENT_STOCK, …) propagates to the drawer,
+    // which shows it; nothing below runs and no success toast is shown.
+    await inventoryApi.submitStockAdjustment(values);
+    setRefreshKey((k) => k + 1);
+    loadKpis();
+    loadAdjustable();
+    showToast("Stock updated.");
+  }
+
+  const branchName = selectedShop?.name;
 
   return (
     <div>
-      <PageHeader title="Inventory" subtitle="Track stock levels, movement, and adjustments across your catalog." />
+      <PageHeader
+        title="Inventory"
+        subtitle={`Track stock levels, movement, and adjustments${branchName ? ` at ${branchName}` : " for the selected branch"}.`}
+      />
 
       {kpisState === "loading" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
@@ -64,7 +99,7 @@ export default function Inventory() {
           <StatCard icon={<Boxes size={17} className="text-yolk-700" />} iconBg="bg-yolk-100" label="Total Items" value={String(kpis.totalItems)} trend={0} comparisonLabel="active products" />
           <StatCard icon={<AlertTriangle size={17} className="text-amber" />} iconBg="bg-amber-soft" label="Low Stock" value={String(kpis.lowStock)} trend={0} comparisonLabel="need restocking" />
           <StatCard icon={<PackageX size={17} className="text-danger" />} iconBg="bg-danger-soft" label="Out of Stock" value={String(kpis.outOfStock)} trend={0} comparisonLabel="unavailable to sell" />
-          <StatCard icon={<Wallet size={17} className="text-olive" />} iconBg="bg-olive-soft" label="Stock Value" value={formatCurrency(kpis.stockValue)} trend={0} comparisonLabel="at cost price" />
+          <StatCard icon={<Wallet size={17} className="text-olive" />} iconBg="bg-olive-soft" label="Stock Value" value={formatCurrency(kpis.stockValue)} trend={0} comparisonLabel="at cost (selling price if no cost set)" />
         </div>
       )}
 
@@ -75,21 +110,38 @@ export default function Inventory() {
         { label: "Alerts", value: "alerts" },
       ]} active={tab} onChange={(v) => setTab(v as TabValue)} /></div>
 
-      {tab === "overview" && <OverviewTab onAdjust={() => setTab("adjustments")} />}
-      {tab === "movement" && <MovementTab />}
-      {tab === "adjustments" && (
-        <AdjustmentsTab
-          products={allProducts}
-          onAdjusted={() => { loadKpis(); loadAllProducts(); showToast("Stock updated."); }}
-        />
-      )}
+      {tab === "overview" && <OverviewTab refreshKey={refreshKey} onAdjust={(p) => setDrawer({ open: true, preset: p })} />}
+      {tab === "movement" && <MovementTab refreshKey={refreshKey} />}
+      {tab === "adjustments" && <AdjustmentsTab refreshKey={refreshKey} onNew={() => setDrawer({ open: true, preset: null })} />}
       {tab === "alerts" && <AlertsTab />}
+
+      <StockAdjustmentDrawer
+        isOpen={drawer.open}
+        onClose={() => setDrawer((d) => ({ ...d, open: false }))}
+        onSubmit={handleAdjustmentSubmit}
+        products={adjustable}
+        presetProduct={drawer.preset}
+      />
     </div>
   );
 }
 
+// ── Stock cell ───────────────────────────────────────
+// A genuine zero and "no inventory record" both read 0; the backend says which.
+function StockCell({ p }: { p: Product }) {
+  const state = getStockRecordState(p);
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span>{p.stock}</span>
+      {state === "none" && (
+        <span title={NO_RECORD_HINT} className="rounded-full bg-amber-soft text-amber text-xs font-medium px-2 py-0.5">No record</span>
+      )}
+    </span>
+  );
+}
+
 // ── Overview ─────────────────────────────────────────
-function OverviewTab({ onAdjust }: { onAdjust: () => void }) {
+function OverviewTab({ refreshKey, onAdjust }: { refreshKey: number; onAdjust: (p: Product) => void }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -99,32 +151,43 @@ function OverviewTab({ onAdjust }: { onAdjust: () => void }) {
   const [categories, setCategories] = useState<string[]>([]);
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
   const [viewing, setViewing] = useState<Product | null>(null);
+  const { begin, isCurrent } = useRequestGuard();
 
   const load = useCallback(async () => {
+    const ticket = begin();
     setState("loading");
     try {
       const res = await inventoryApi.fetchInventoryOverview({ search, category, status, page, pageSize: PAGE_SIZE });
+      if (!isCurrent(ticket)) return;
       setProducts(res.items);
       setTotal(res.total);
-      setCategories(await import("../api/products").then((m) => m.getProductCategories()));
       setState("success");
     } catch {
-      setState("error");
+      if (isCurrent(ticket)) setState("error");
     }
-  }, [search, category, status, page]);
+  }, [search, category, status, page, refreshKey, begin, isCurrent]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [search, category, status]);
 
+  // Real categories (the Products-page helper), loaded once — not from the demo store.
+  useEffect(() => {
+    let cancelled = false;
+    productsApi.fetchProductCategories().then((c) => { if (!cancelled) setCategories(c); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   const columns: Column<Product>[] = [
     { key: "name", header: "Product", isPrimary: true, render: (p) => <span className="font-medium text-charcoal">{p.name}</span> },
     { key: "category", header: "Category", render: (p) => <span className="text-charcoal-muted">{p.category}</span> },
-    { key: "stock", header: "Current Stock", render: (p) => <span>{p.stock}</span> },
+    { key: "stock", header: "Current Stock", render: (p) => <StockCell p={p} /> },
     { key: "unit", header: "Unit", render: (p) => <span className="text-charcoal-muted capitalize">{p.unit}</span> },
     { key: "threshold", header: "Low Stock Threshold", render: (p) => <span className="text-charcoal-muted">{p.lowStockThreshold}</span> },
     { key: "status", header: "Status", render: (p) => <StatusBadge status={inventoryApi.getInventoryStatusLabel(p)} /> },
     { key: "updatedAt", header: "Last Updated", render: (p) => <span className="text-charcoal-muted">{new Date(p.updatedAt).toLocaleDateString("en-IN")}</span> },
   ];
+
+  const viewingState = viewing ? getStockRecordState(viewing) : "unknown";
 
   return (
     <div className="rounded-card bg-white shadow-soft p-4 sm:p-5">
@@ -156,7 +219,7 @@ function OverviewTab({ onAdjust }: { onAdjust: () => void }) {
             actionsRender={(p) => (
               <div className="flex items-center justify-end gap-1">
                 <button onClick={() => setViewing(p)} aria-label={`View ${p.name}`} className="w-8 h-8 rounded-btn flex items-center justify-center hover:bg-charcoal/6 transition-colors duration-150"><Eye size={15} /></button>
-                <button onClick={onAdjust} aria-label={`Adjust stock for ${p.name}`} className="w-8 h-8 rounded-btn flex items-center justify-center hover:bg-charcoal/6 transition-colors duration-150"><PackagePlus size={15} /></button>
+                <button onClick={(e) => { e.stopPropagation(); onAdjust(p); }} aria-label={`Adjust stock for ${p.name}`} className="w-8 h-8 rounded-btn flex items-center justify-center hover:bg-charcoal/6 transition-colors duration-150"><PackagePlus size={15} /></button>
               </div>
             )}
           />
@@ -169,12 +232,16 @@ function OverviewTab({ onAdjust }: { onAdjust: () => void }) {
 
       <Drawer isOpen={!!viewing} onClose={() => setViewing(null)} title={viewing?.name ?? ""} subtitle={viewing?.category}>
         {viewing && (
-          <dl className="grid grid-cols-2 gap-4">
-            <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Current Stock</dt><dd className="font-semibold">{viewing.stock} {viewing.unit}(s)</dd></div>
-            <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Low Stock Threshold</dt><dd className="font-semibold">{viewing.lowStockThreshold}</dd></div>
-            <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Status</dt><dd><StatusBadge status={inventoryApi.getInventoryStatusLabel(viewing)} /></dd></div>
-            <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Last Updated</dt><dd className="text-sm text-charcoal-muted">{new Date(viewing.updatedAt).toLocaleString("en-IN")}</dd></div>
-          </dl>
+          <>
+            <dl className="grid grid-cols-2 gap-4">
+              <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Current Stock</dt><dd className="font-semibold">{viewing.stock} {viewing.unit}(s)</dd></div>
+              <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Low Stock Threshold</dt><dd className="font-semibold">{viewing.lowStockThreshold}</dd></div>
+              <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Status</dt><dd><StatusBadge status={inventoryApi.getInventoryStatusLabel(viewing)} /></dd></div>
+              <div><dt className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Last Updated</dt><dd className="text-sm text-charcoal-muted">{new Date(viewing.updatedAt).toLocaleString("en-IN")}</dd></div>
+            </dl>
+            {viewingState === "none" && <p className="mt-4 text-sm text-charcoal-muted rounded-btn bg-ivory-soft p-3">{NO_RECORD_HINT}</p>}
+            {viewingState === "zero" && <p className="mt-4 text-sm text-charcoal-muted rounded-btn bg-ivory-soft p-3">This branch has an inventory record for this product, and it is genuinely at zero.</p>}
+          </>
         )}
       </Drawer>
     </div>
@@ -182,25 +249,28 @@ function OverviewTab({ onAdjust }: { onAdjust: () => void }) {
 }
 
 // ── Stock Movement ────────────────────────────────────
-function MovementTab() {
+function MovementTab({ refreshKey }: { refreshKey: number }) {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
+  const { begin, isCurrent } = useRequestGuard();
 
   const load = useCallback(async () => {
+    const ticket = begin();
     setState("loading");
     try {
       const res = await inventoryApi.fetchStockMovements({ search, type, page, pageSize: PAGE_SIZE });
+      if (!isCurrent(ticket)) return;
       setMovements(res.items);
       setTotal(res.total);
       setState("success");
     } catch {
-      setState("error");
+      if (isCurrent(ticket)) setState("error");
     }
-  }, [search, type, page]);
+  }, [search, type, page, refreshKey, begin, isCurrent]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [search, type]);
@@ -219,7 +289,8 @@ function MovementTab() {
   return (
     <div className="rounded-card bg-white shadow-soft p-4 sm:p-5">
       <FilterBar>
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by product or reason..." />
+        {/* The backend searches the movement REASON only (not the product name). */}
+        <SearchBar value={search} onChange={setSearch} placeholder="Search by reason..." />
         <Select value={type} onChange={(e) => setType(e.target.value)} className="w-auto min-w-[150px]"
           options={[
             { label: "All types", value: "all" },
@@ -244,36 +315,39 @@ function MovementTab() {
   );
 }
 
-// ── Adjustments ────────────────────────────────────────
-function AdjustmentsTab({ products, onAdjusted }: { products: Product[]; onAdjusted: () => void }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+// ── Adjustments (history) ──────────────────────────────
+// The drawer lives in the page; this tab lists the selected branch's manual
+// stock corrections: what changed, from→to, why, and who made it.
+function AdjustmentsTab({ refreshKey, onNew }: { refreshKey: number; onNew: () => void }) {
   const [adjustments, setAdjustments] = useState<StockMovement[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
+  const { begin, isCurrent } = useRequestGuard();
 
   const load = useCallback(async () => {
+    const ticket = begin();
     setState("loading");
     try {
-      const res = await inventoryApi.fetchStockMovements({ type: "ADJUSTMENT", page: 1, pageSize: 50 });
+      const res = await inventoryApi.fetchStockMovements({ type: "ADJUSTMENT", search, page, pageSize: PAGE_SIZE });
+      if (!isCurrent(ticket)) return;
       setAdjustments(res.items);
+      setTotal(res.total);
       setState("success");
     } catch {
-      setState("error");
+      if (isCurrent(ticket)) setState("error");
     }
-  }, []);
+  }, [search, page, refreshKey, begin, isCurrent]);
 
   useEffect(() => { load(); }, [load]);
-
-  async function handleSubmit(values: StockAdjustmentFormValues) {
-    await inventoryApi.submitStockAdjustment(values);
-    load();
-    onAdjusted();
-  }
+  useEffect(() => { setPage(1); }, [search]);
 
   const columns: Column<StockMovement>[] = [
     { key: "product", header: "Product", isPrimary: true, render: (m) => <span className="font-medium text-charcoal">{m.productName}</span> },
     { key: "date", header: "Date", render: (m) => <span className="text-charcoal-muted">{new Date(m.date).toLocaleString("en-IN")}</span> },
     { key: "quantity", header: "Change", render: (m) => <span className={m.quantity >= 0 ? "text-olive font-semibold" : "text-danger font-semibold"}>{m.quantity > 0 ? "+" : ""}{m.quantity}</span> },
-    { key: "newStock", header: "New Stock", render: (m) => <span className="font-medium">{m.newStock}</span> },
+    { key: "stock", header: "Stock", render: (m) => <span className="font-medium whitespace-nowrap">{m.previousStock} → {m.newStock}</span> },
     { key: "reason", header: "Reason", render: (m) => <span className="text-charcoal-muted">{m.reason}</span> },
     { key: "user", header: "By", render: (m) => <span className="text-charcoal-muted">{m.user}</span> },
   ];
@@ -285,18 +359,27 @@ function AdjustmentsTab({ products, onAdjusted }: { products: Product[]; onAdjus
           <h2 className="font-display font-bold text-lg text-charcoal">Stock Adjustments</h2>
           <p className="text-sm text-charcoal-muted">Corrections for breakage, spoilage, or count discrepancies.</p>
         </div>
-        <Button onClick={() => setDrawerOpen(true)}><Plus size={16} /> New Adjustment</Button>
+        <Button onClick={onNew}><Plus size={16} /> New Adjustment</Button>
       </div>
 
-      {state === "error" && <ErrorState message="Couldn't load adjustment history." onRetry={load} />}
-      {state === "success" && adjustments.length === 0 && (
-        <EmptyState title="No adjustments yet" description="Adjustments you submit will appear here." action={<Button size="sm" onClick={() => setDrawerOpen(true)}><Plus size={15} /> New Adjustment</Button>} />
-      )}
-      {(state === "loading" || adjustments.length > 0) && (
-        <DataTable columns={columns} rows={adjustments} rowKey={(m) => m.id} isLoading={state === "loading"} />
-      )}
+      <FilterBar>
+        <SearchBar value={search} onChange={setSearch} placeholder="Search adjustments by reason..." />
+      </FilterBar>
 
-      <StockAdjustmentDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} onSubmit={handleSubmit} products={products} />
+      <div className="mt-4">
+        {state === "error" && <ErrorState message="Couldn't load adjustment history." onRetry={load} />}
+        {state === "success" && adjustments.length === 0 && (
+          search
+            ? <EmptyState title="No matching adjustments" description="Try a different search." />
+            : <EmptyState title="No adjustments yet" description="Adjustments you submit will appear here." action={<Button size="sm" onClick={onNew}><Plus size={15} /> New Adjustment</Button>} />
+        )}
+        {(state === "loading" || adjustments.length > 0) && (
+          <DataTable columns={columns} rows={adjustments} rowKey={(m) => m.id} isLoading={state === "loading"} />
+        )}
+      </div>
+      {state === "success" && adjustments.length > 0 && (
+        <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
+      )}
     </div>
   );
 }

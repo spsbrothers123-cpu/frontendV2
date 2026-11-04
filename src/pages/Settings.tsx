@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Store, Receipt, Palette, Terminal, ShieldCheck } from "lucide-react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ShopSettingsPanel } from "../components/settings/ShopSettingsPanel";
@@ -14,11 +15,16 @@ const categories: { value: Category; label: string; icon: React.ReactNode; descr
   { value: "tax", label: "Tax & Billing", icon: <Receipt size={16} />, description: "GST and invoice preferences." },
   { value: "appearance", label: "Appearance", icon: <Palette size={16} />, description: "Theme and product display." },
   { value: "pos", label: "POS", icon: <Terminal size={16} />, description: "Receipts, printing, invoice format." },
-  { value: "security", label: "Security", icon: <ShieldCheck size={16} />, description: "Session timeout and confirmations." },
+  { value: "security", label: "Security", icon: <ShieldCheck size={16} />, description: "Session timeout, confirmations, and account recovery." },
 ];
 
 export default function Settings() {
-  const [category, setCategory] = useState<Category>("shop");
+  const location = useLocation();
+  // Deep link from the account-recovery banner: <Link state={{ category: "security" }}>.
+  const requested = (location.state as { category?: string } | null)?.category;
+  const [category, setCategory] = useState<Category>(
+    categories.some((c) => c.value === requested) ? (requested as Category) : "shop"
+  );
   const active = categories.find((c) => c.value === category)!;
 
   return (

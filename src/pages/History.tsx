@@ -41,7 +41,18 @@ export default function History() {
     { key: "time", header: "Time", render: (r) => <span className="text-charcoal-muted">{new Date(r.time).toLocaleString("en-IN")}</span> },
     { key: "type", header: "Type", render: (r) => <StatusBadge status={r.type === "Sale" ? "Active" : r.type === "Purchase" ? "Received" : "Completed"} /> },
     { key: "party", header: "Customer/Supplier", render: (r) => <span>{r.party}</span> },
-    { key: "amount", header: "Amount", render: (r) => <span className="font-semibold">{formatCurrency(r.amount)}</span> },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => (r.status === "Cancelled" ? <StatusBadge status="Cancelled" /> : <span className="text-charcoal-muted">—</span>),
+    },
+    {
+      key: "amount",
+      header: "Amount",
+      render: (r) => (
+        <span className={r.status === "Cancelled" ? "font-semibold line-through text-charcoal-muted" : "font-semibold"}>{formatCurrency(r.amount)}</span>
+      ),
+    },
     { key: "paymentMethod", header: "Payment Method", render: (r) => <span className="text-charcoal-muted">{r.paymentMethod}</span> },
     { key: "createdBy", header: "Created By", render: (r) => <span className="text-charcoal-muted">{r.createdBy}</span> },
   ];
@@ -85,7 +96,7 @@ export default function History() {
         )}
       </div>
 
-      <HistoryDetailsDrawer record={viewing} onClose={() => setViewing(null)} />
+      <HistoryDetailsDrawer record={viewing} onClose={() => setViewing(null)} onChanged={load} />
     </div>
   );
 }

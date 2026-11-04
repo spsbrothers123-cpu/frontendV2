@@ -1,27 +1,34 @@
 import { useEffect, useState, useCallback } from "react";
-import { Plus, ShoppingCart, Download } from "lucide-react";
+import { Plus, ShoppingCart, Download, RotateCcw } from "lucide-react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Button, SearchBar, FilterBar, DataTable, Pagination, EmptyState, ErrorState, StatusBadge, Drawer } from "../components/ui";
 import type { Column } from "../components/ui/DataTable";
 import { PurchaseFormDrawer } from "../components/purchases/PurchaseFormDrawer";
+import { ReversePurchaseModal } from "../components/purchases/ReversePurchaseModal";
 import * as purchasesApi from "../api/purchases";
 import * as productsApi from "../api/products";
 import type { Purchase, PurchaseFormValues, Product, ProductFormValues } from "../types";
 import { useToast } from "../context/ToastContext";
+import { useShop } from "../context/ShopContext";
+
+// A reversal never rewrites `status`; show it as its own state.
+const displayStatus = (p: Purchase) => (p.reversed ? "Reversed" : p.status);
 
 const PAGE_SIZE = 8;
 
 export default function Purchases() {
   const { showToast } = useToast();
+  const { selectedShop } = useShop();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [state, setState] = useState<"loading" | "success" | "error">("loading");
-  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [viewingPurchase, setViewingPurchase] = useState<Purchase | null>(null);
+  const [reversingPurchase, setReversingPurchase] = useState<Purchase | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
   const load = useCallback(async () => {
@@ -30,6 +37,9 @@ export default function Purchases() {
       const res = await purchasesApi.fetchPurchases({ search, page, pageSize: PAGE_SIZE });
       setPurchases(res.items);
       setTotal(res.total);
+      // Keep an open details drawer in step with the refreshed row (e.g. after
+      // a reversal that happened elsewhere).
+      setViewingPurchase((cur) => (cur ? res.items.find((i) => i.id === cur.id) ?? cur : cur));
       setState("success");
     } catch {
       setState("error");
@@ -38,8 +48,10 @@ export default function Purchases() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [search]);
+  // Categories for the quick "add product" form. The product PICKER is not
+  // loaded here: it belongs to the receiving branch chosen inside the form.
   useEffect(() => {
-    productsApi.fetchProducts({ pageSize: 200 }).then((res) => setProducts(res.items));
+    productsApi.fetchProductCategories().then(setCategories).catch(() => setCategories([]));
   }, []);
 
   async function handleCreate(values: PurchaseFormValues) {
@@ -54,12 +66,19 @@ export default function Purchases() {
   }
 
   // "Add Product in Catalog" -> new product, from inside the purchase
-  // drawer, reusing the same create-product call the Products page uses.
-  // Keeps `products` in sync so it's immediately selectable in this row.
+  // drawer, reusing the same create-product call the Products page uses. The
+  // drawer adds it to the receiving branch's picker itself.
   async function handleCreateProduct(values: ProductFormValues): Promise<Product> {
     const product = await productsApi.createProduct(values);
-    setProducts((prev) => [...prev, product]);
+    setCategories((prev) => (prev.includes(product.category) ? prev : [...prev, product.category]));
     return product;
+  }
+
+  function handleReversed(updated: Purchase) {
+    showToast(`Purchase reversed — stock removed from ${updated.receivingBranchName ?? "its receiving branch"}.`);
+    setReversingPurchase(null);
+    setViewingPurchase(updated);
+    load();
   }
 
   async function handleExport() {
@@ -77,10 +96,11 @@ export default function Purchases() {
   const columns: Column<Purchase>[] = [
     { key: "invoice", header: "Invoice", isPrimary: true, render: (p) => <span className="font-medium text-charcoal">{p.invoiceNumber}</span> },
     { key: "supplier", header: "Supplier", render: (p) => <span className="text-charcoal-muted">{p.supplierName}</span> },
+    { key: "branch", header: "Receiving Branch", render: (p) => <span className="text-charcoal-muted">{p.receivingBranchName ?? "—"}</span> },
     { key: "date", header: "Date", render: (p) => <span>{p.purchaseDate}</span> },
     { key: "items", header: "Items", render: (p) => <span>{p.items.length} product{p.items.length !== 1 ? "s" : ""}</span> },
     { key: "amount", header: "Amount", render: (p) => <span className="font-semibold">₹{p.grandTotal.toLocaleString("en-IN")}</span> },
-    { key: "status", header: "Status", render: (p) => <StatusBadge status={p.status} /> },
+    { key: "status", header: "Status", render: (p) => <StatusBadge status={displayStatus(p)} /> },
   ];
 
   return (
@@ -102,6 +122,11 @@ export default function Purchases() {
         <FilterBar>
           <SearchBar value={search} onChange={setSearch} placeholder="Search by supplier or invoice..." />
         </FilterBar>
+        {selectedShop && (
+          <p className="mt-3 text-xs text-charcoal-muted">
+            Showing purchases received at <strong>{selectedShop.name}</strong>. Switch branch in the header to see another branch's purchases.
+          </p>
+        )}
 
         <div className="mt-4">
           {state === "error" && <ErrorState message="Couldn't load purchase history." onRetry={load} />}
@@ -134,8 +159,8 @@ export default function Purchases() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleCreate}
         supplierSuggestions={purchasesApi.getSupplierSuggestions()}
-        productSuggestions={products}
-        productCategories={Array.from(new Set(products.map((p) => p.category)))}
+        loadCatalog={productsApi.fetchBranchCatalog}
+        productCategories={categories}
         onCreateProduct={handleCreateProduct}
       />
 
@@ -149,8 +174,22 @@ export default function Purchases() {
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <div><p className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Purchase Date</p><p className="font-medium">{viewingPurchase.purchaseDate}</p></div>
-              <div><p className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Status</p><StatusBadge status={viewingPurchase.status} /></div>
+              <div><p className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Status</p><StatusBadge status={displayStatus(viewingPurchase)} /></div>
+              <div className="col-span-2">
+                <p className="text-xs text-charcoal-muted uppercase tracking-wide mb-1">Receiving Branch</p>
+                <p className="font-medium" data-testid="purchase-receiving-branch">{viewingPurchase.receivingBranchName ?? "—"}</p>
+                <p className="text-xs text-charcoal-muted mt-0.5">Fixed when the purchase was saved. To correct it, reverse the purchase.</p>
+              </div>
             </div>
+
+            {viewingPurchase.reversed && viewingPurchase.reversal && (
+              <div className="rounded-btn bg-amber-soft p-3.5 space-y-1.5" data-testid="purchase-reversal">
+                <p className="text-sm font-semibold text-amber">Reversed</p>
+                <p className="text-sm text-charcoal"><span className="text-charcoal-muted">Reason: </span>{viewingPurchase.reversal.reason}</p>
+                <p className="text-xs text-charcoal-muted">Reversed on {new Date(viewingPurchase.reversal.reversedAt).toLocaleString("en-IN")}</p>
+                <p className="text-xs text-charcoal-muted">The received stock was taken back out of {viewingPurchase.receivingBranchName ?? "the receiving branch"}. The original purchase is kept below unchanged.</p>
+              </div>
+            )}
 
             <div>
               <p className="text-sm font-semibold text-charcoal mb-2">Products</p>
@@ -172,9 +211,26 @@ export default function Purchases() {
               {viewingPurchase.tax > 0 && <div className="flex items-center justify-between text-sm"><span className="text-charcoal-muted">Tax</span><span>₹{viewingPurchase.tax.toLocaleString("en-IN")}</span></div>}
               <div className="flex items-center justify-between font-semibold text-charcoal pt-1.5 border-t border-charcoal/10"><span>Grand Total</span><span>₹{viewingPurchase.grandTotal.toLocaleString("en-IN")}</span></div>
             </div>
+
+            {!viewingPurchase.reversed && viewingPurchase.status === "Received" && (
+              <div className="pt-1">
+                <Button variant="secondary" onClick={() => setReversingPurchase(viewingPurchase)}>
+                  <RotateCcw size={15} /> Reverse purchase
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Drawer>
+
+      {reversingPurchase && (
+        <ReversePurchaseModal
+          purchase={reversingPurchase}
+          onClose={() => setReversingPurchase(null)}
+          onReversed={handleReversed}
+          onAlreadyReversed={load}
+        />
+      )}
     </div>
   );
 }

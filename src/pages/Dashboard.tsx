@@ -122,7 +122,7 @@ export default function Dashboard() {
       )}
       {kpisState === "success" && kpis && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-          <StatCard icon={<Wallet size={17} className="text-yolk-700" />} iconBg="bg-yolk-100" label="Total Sales" value={formatCurrency(kpis.totalSales)} trend={kpis.totalSalesTrend} comparisonLabel={kpis.comparisonLabel} />
+          <StatCard icon={<Wallet size={17} className="text-yolk-700" />} iconBg="bg-yolk-100" label="Net Sales" value={formatCurrency(kpis.totalSales)} trend={kpis.totalSalesTrend} comparisonLabel={kpis.comparisonLabel} />
           <StatCard icon={<TrendingUp size={17} className="text-olive" />} iconBg="bg-olive-soft" label="Total Revenue" value={formatCurrency(kpis.totalRevenue)} trend={kpis.totalRevenueTrend} comparisonLabel={kpis.comparisonLabel} />
           <StatCard icon={<Banknote size={17} className="text-amber" />} iconBg="bg-amber-soft" label="Cash Sales" value={formatCurrency(kpis.cashSales)} trend={kpis.cashSalesTrend} comparisonLabel={kpis.comparisonLabel} />
           <StatCard icon={<CreditCard size={17} className="text-danger" />} iconBg="bg-danger-soft" label="Credit Sales" value={formatCurrency(kpis.creditSales)} trend={kpis.creditSalesTrend} comparisonLabel={kpis.comparisonLabel} />
@@ -142,7 +142,9 @@ export default function Dashboard() {
                 <p className="text-xs text-charcoal-muted">Revenue</p>
                 <p className="font-display font-bold text-charcoal">
                   {formatCurrency(kpis.totalRevenue)}{" "}
-                  <span className="text-olive text-sm font-semibold">(+{kpis.totalRevenueTrend}%)</span>
+                  <span className={`${kpis.totalRevenueTrend >= 0 ? "text-olive" : "text-danger"} text-sm font-semibold`}>
+                    ({kpis.totalRevenueTrend >= 0 ? "+" : "−"}{Math.abs(kpis.totalRevenueTrend)}%)
+                  </span>
                 </p>
               </div>
             )}

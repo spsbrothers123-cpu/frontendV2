@@ -1,5 +1,6 @@
 import { apiClient, USE_MOCK } from "./client";
 import { delay, store, genId, computeLowStock } from "./mockStore";
+import { fetchProducts } from "./products";
 import type {
   Product,
   Paginated,
@@ -7,7 +8,7 @@ import type {
   StockMovement,
   StockAdjustmentFormValues,
   LowStockItem,
-  CashierStockBreakdown,
+  BranchStockBreakdown,
 } from "../types";
 
 export interface InventoryQuery {
@@ -146,35 +147,44 @@ export async function fetchLowStockAlerts(): Promise<LowStockItem[]> {
   return data;
 }
 
-// Cashier-level inventory foundation: a single product's stock broken down
-// by the cashier who owns each portion — e.g. "Arun: 50, Bala: 100". Never
-// collapse this into one number; each row is that cashier's own, isolated
-// stock. Used to populate "which cashier?" pickers with each cashier's
-// CURRENT quantity (not just their name), and for any per-cashier detail
-// view.
+// One product's stock AT THE SELECTED BRANCH, plus whether the branch has an
+// inventory record for it. Stock belongs to the branch — never derive it from
+// CashierInventory or from `byCashier`.
 //
-// NOTE for backend integration: expects GET /admin/inventory/:productId/by-cashier
-export async function fetchProductCashierBreakdown(productId: string): Promise<CashierStockBreakdown> {
+// Backend: GET /admin/inventory/:productId/by-cashier (legacy path name).
+export async function fetchBranchStock(productId: string): Promise<BranchStockBreakdown> {
   if (USE_MOCK) {
-    // The mock store doesn't model multi-cashier inventory — it only ever
-    // simulated one shared shop-wide number. Rather than fabricate a
-    // fictitious multi-cashier split with no basis in the mock data, this
-    // surfaces the one number the mock store actually has, attributed to
-    // whichever demo cashier exists (or none, if the mock store has none).
+    // The mock store only models one shop-wide number.
     const product = store.products.find((p) => p.id === productId);
-    const demoCashier = store.cashiers.find((c) => c.active);
     return delay(
       {
         productId,
         productName: product?.name ?? "",
         totalStock: product?.stock ?? 0,
-        byCashier: demoCashier
-          ? [{ cashierId: demoCashier.id, cashierName: demoCashier.name, quantity: product?.stock ?? 0 }]
-          : [],
+        branchStock: product?.stock ?? 0,
+        inventoryRecorded: true,
+        byCashier: [],
       },
       350
     );
   }
-  const { data } = await apiClient.get<CashierStockBreakdown>(`/admin/inventory/${productId}/by-cashier`);
+  const { data } = await apiClient.get<BranchStockBreakdown>(`/admin/inventory/${productId}/by-cashier`);
   return data;
+}
+
+// Products the stock-adjustment form can offer: every product assigned to the
+// selected branch, with that branch's stock. The backend caps pageSize at 200,
+// so this walks the pages instead of asking for one oversized page (which the
+// backend rejects). Bounded so a bad `total` can never loop.
+const ADJUSTABLE_PAGE_SIZE = 200;
+const ADJUSTABLE_MAX_PAGES = 50;
+
+export async function fetchAdjustableProducts(): Promise<Product[]> {
+  const all: Product[] = [];
+  for (let page = 1; page <= ADJUSTABLE_MAX_PAGES; page++) {
+    const res = await fetchProducts({ assignment: "assigned", page, pageSize: ADJUSTABLE_PAGE_SIZE });
+    all.push(...res.items);
+    if (res.items.length === 0 || page * ADJUSTABLE_PAGE_SIZE >= res.total) break;
+  }
+  return all;
 }
