@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { DesktopSidebar, MobileDrawer } from "./Sidebar";
 import { TopHeader } from "./TopHeader";
 import { useShop } from "../../context/ShopContext";
+import { RecoveryWarningBanner } from "./RecoveryWarningBanner";
 
 // Cashiers and Sessions are deliberate exceptions to the Global Shop
 // Selector (Phase 3 spec §1/§2): both span every shop the admin owns and
@@ -11,7 +12,9 @@ import { useShop } from "../../context/ShopContext";
 // not remount them or wipe their own local state (active tab, selected
 // cashier filter, page number, etc). Consolidation joins them: it has its
 // own independent shop filter and must keep it when the global shop changes.
-const SHOP_INDEPENDENT_PATHS = ["/admin/cashiers", "/admin/sessions", "/admin/consolidation"];
+// UPI Management is an admin-level config page covering every branch, so it
+// also opts out (in-progress edits must survive a global shop switch).
+const SHOP_INDEPENDENT_PATHS = ["/admin/cashiers", "/admin/sessions", "/admin/consolidation", "/admin/upi"];
 
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -28,6 +31,7 @@ export function AdminLayout() {
       <div className="flex-1 min-w-0 flex flex-col">
         <TopHeader onOpenMobileMenu={() => setMobileOpen(true)} />
         <main className="flex-1 px-4 sm:px-6 py-5 sm:py-6 max-w-[1600px] w-full mx-auto">
+          <RecoveryWarningBanner />
           {isLoading ? (
             <div className="min-h-[60vh] flex items-center justify-center" role="status" aria-label="Loading shop">
               <Loader2 className="animate-spin text-yolk-500" size={26} />

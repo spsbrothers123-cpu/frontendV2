@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Store, Check } from "lucide-react";
+import { ChevronDown, Store, Check, Plus } from "lucide-react";
 import { useShop } from "../../context/ShopContext";
+import { CreateBranchModal } from "./CreateBranchModal";
 
 export function ShopSelector() {
   const { availableShops, selectedShop, isSwitching, setSelectedShop } = useShop();
   const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,7 +26,9 @@ export function ShopSelector() {
     );
   }
 
-  const canSwitch = availableShops.length > 1;
+  // The menu also hosts "Create branch" (Central Admin only — the backend
+  // enforces it), so it opens even with a single branch.
+  const canSwitch = true;
 
   async function handlePick(shopId: string) {
     setOpen(false);
@@ -64,8 +68,17 @@ export function ShopSelector() {
               {shop.id === selectedShop?.id && <Check size={15} className="text-olive shrink-0" />}
             </button>
           ))}
+          <div className="border-t border-charcoal/6 mt-1.5 pt-1.5">
+            <button
+              onClick={() => { setOpen(false); setCreating(true); }}
+              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm font-medium text-charcoal hover:bg-ivory-soft transition-colors duration-150 text-left"
+            >
+              <Plus size={15} className="text-olive shrink-0" /> Create branch…
+            </button>
+          </div>
         </div>
       )}
+      <CreateBranchModal isOpen={creating} onClose={() => setCreating(false)} />
     </div>
   );
 }

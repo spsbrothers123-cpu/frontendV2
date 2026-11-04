@@ -3,6 +3,7 @@ import { Input, Switch, Button, ConfirmModal } from "../ui";
 import * as settingsApi from "../../api/settings";
 import type { SecuritySettings } from "../../types";
 import { useToast } from "../../context/ToastContext";
+import { AccountRecoverySection } from "./AccountRecoverySection";
 
 export function SecuritySettingsPanel() {
   const { showToast } = useToast();
@@ -64,6 +65,8 @@ export function SecuritySettingsPanel() {
           onChange={handleRefundConfirmationChange}
         />
       </div>
+
+      <AccountRecoverySection />
 
       <ConfirmModal
         isOpen={confirming}

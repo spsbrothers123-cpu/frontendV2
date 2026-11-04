@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Drawer, Button, Input, Select } from "../ui";
-import { useActiveCashiers } from "../../hooks/useActiveCashiers";
+import { useStockCashier } from "../../hooks/useStockCashier";
+import { useShop } from "../../context/ShopContext";
 import type { Product, ProductFormValues, ProductUnit } from "../../types";
 
 const unitOptions: { label: string; value: ProductUnit }[] = [
@@ -18,9 +19,13 @@ interface ProductFormDrawerProps {
   onSubmit: (values: ProductFormValues) => Promise<void>;
   product?: Product | null;
   categories: string[];
+  // Phase 2: set when the drawer is used to quick-add a product from the
+  // purchase form — initial stock then arrives through the purchase itself,
+  // at the purchase's receiving branch, so it is not asked for here.
+  hideInitialStock?: boolean;
 }
 
-export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categories }: ProductFormDrawerProps) {
+export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categories, hideInitialStock }: ProductFormDrawerProps) {
   const [values, setValues] = useState<ProductFormValues>(emptyForm);
   const [errors, setErrors] = useState<Partial<Record<keyof ProductFormValues, string>>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -30,7 +35,11 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
   // existing product never touches stock at all anymore (see the note
   // above the Stock field below).
   const isCreating = !product;
-  const { cashiers, isLoading: cashiersLoading, error: cashiersError } = useActiveCashiers(isOpen && isCreating);
+  const { selectedShop } = useShop();
+  // Phase 2: one cashier per branch — resolved automatically; a picker only
+  // appears for a legacy multi-cashier conflict (see useStockCashier).
+  const stockCashier = useStockCashier(isOpen && isCreating && !hideInitialStock);
+  const { cashiers, isLoading: cashiersLoading, error: cashiersError, needsPicker } = stockCashier;
 
   useEffect(() => {
     if (isOpen) {
@@ -47,13 +56,15 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
     }
   }, [isOpen, product]);
 
+  // Keep the form's cashierId in step with the auto-resolved (or picked) one.
   useEffect(() => {
-    if (isOpen && isCreating && !values.cashierId && cashiers.length === 1) {
-      setValues((v) => ({ ...v, cashierId: cashiers[0].id }));
+    if (isOpen && isCreating && stockCashier.cashierId !== (values.cashierId ?? "")) {
+      setValues((v) => ({ ...v, cashierId: stockCashier.cashierId }));
     }
-  }, [isOpen, isCreating, cashiers, values.cashierId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, isCreating, stockCashier.cashierId]);
 
-  const needsCashier = isCreating && Number(values.stock) > 0;
+  const needsCashier = isCreating && !hideInitialStock && Number(values.stock) > 0 && needsPicker;
 
   function validate(): boolean {
     const next: typeof errors = {};
@@ -61,8 +72,8 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
     if (!values.category.trim()) next.category = "Category is required.";
     if (values.sellingPrice === "" || Number(values.sellingPrice) < 0) next.sellingPrice = "Enter a valid price.";
     if (isCreating) {
-      if (values.stock === "" || Number(values.stock) < 0 || !Number.isFinite(Number(values.stock))) next.stock = "Enter a valid stock quantity.";
-      if (needsCashier && !values.cashierId) next.cashierId = "Select which cashier should receive this stock.";
+      if (!hideInitialStock && (values.stock === "" || Number(values.stock) < 0 || !Number.isFinite(Number(values.stock)))) next.stock = "Enter a valid stock quantity.";
+      if (needsCashier && !values.cashierId) next.cashierId = "Select which cashier's legacy stock should receive this.";
     }
     if (values.lowStockThreshold === "" || Number(values.lowStockThreshold) < 0) next.lowStockThreshold = "Enter a valid threshold.";
     setErrors(next);
@@ -79,7 +90,7 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
       // doesn't accept them (stock only ever moves through Adjust Stock,
       // which is cashier-scoped). Sending the product's current stock
       // back here would be a no-op at best and misleading at worst.
-      await onSubmit(isCreating ? values : { ...values, stock: product!.stock, cashierId: undefined });
+      await onSubmit(isCreating ? (hideInitialStock ? { ...values, stock: 0, cashierId: undefined } : values) : { ...values, stock: product!.stock, cashierId: undefined });
       onClose();
     } finally {
       setSubmitting(false);
@@ -91,7 +102,7 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
       isOpen={isOpen}
       onClose={onClose}
       title={product ? "Edit Product" : "Add Product"}
-      subtitle={product ? `Editing ${product.name}` : "Create a new product in your catalog"}
+      subtitle={product ? `Editing ${product.name}` : "Create a global product — it is assigned to every branch"}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={submitting}>Cancel</Button>
@@ -117,7 +128,7 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
 
         <div className="grid grid-cols-2 gap-4">
           <Input
-            label="Selling price (₹)" required type="number" min={0} step="0.01" value={values.sellingPrice} error={errors.sellingPrice}
+            label="Common selling price (₹)" required hint={product ? "Changing this updates the common price only. Branch overrides are kept and completed bills are unchanged." : "Default for every branch. Branches can override it from Branches & Pricing."} type="number" min={0} step="0.01" value={values.sellingPrice} error={errors.sellingPrice}
             onChange={(e) => setValues((v) => ({ ...v, sellingPrice: e.target.value === "" ? "" : Number(e.target.value) }))}
           />
           <Input
@@ -128,14 +139,19 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
 
         <div className="grid grid-cols-2 gap-4">
           {isCreating ? (
-            <Input
-              label="Initial stock quantity" required type="number" min={0} value={values.stock} error={errors.stock}
-              onChange={(e) => setValues((v) => ({ ...v, stock: e.target.value === "" ? "" : Number(e.target.value) }))}
-            />
+            hideInitialStock ? (
+              <Input label="Initial stock" value="Via this purchase" disabled hint="Stock is added at the receiving branch." />
+            ) : (
+              <Input
+                label="Initial stock quantity" required type="number" min={0} value={values.stock} error={errors.stock}
+                hint={selectedShop ? `Goes to ${selectedShop.name}. Other branches start at 0.` : "Other branches start at 0."}
+                onChange={(e) => setValues((v) => ({ ...v, stock: e.target.value === "" ? "" : Number(e.target.value) }))}
+              />
+            )
           ) : (
             <Input
-              label="Stock quantity" value={`${product!.stock} (total across cashiers)`} disabled
-              hint="Use Adjust Stock to change a specific cashier's stock."
+              label="Stock (selected branch)" value={`${product!.stock}`} disabled
+              hint="Use Adjust Stock to change this branch's stock."
             />
           )}
           <Select
@@ -146,12 +162,12 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
 
         {needsCashier && (
           <Select
-            label="Cashier receiving this stock"
+            label="Cashier (legacy stock owner)"
             required
-            hint="Every cashier keeps their own separate stock — pick who this initial stock belongs to."
+            hint="This branch still has more than one cashier — resolve that with the owner. Until then, pick whose legacy stock this belongs to."
             value={values.cashierId ?? ""}
             error={errors.cashierId}
-            onChange={(e) => setValues((v) => ({ ...v, cashierId: e.target.value }))}
+            onChange={(e) => { stockCashier.setPicked(e.target.value); setValues((v) => ({ ...v, cashierId: e.target.value })); }}
             disabled={cashiersLoading}
             options={[
               { label: cashiersLoading ? "Loading cashiers…" : "Select a cashier…", value: "" },
@@ -159,10 +175,7 @@ export function ProductFormDrawer({ isOpen, onClose, onSubmit, product, categori
             ]}
           />
         )}
-        {needsCashier && !cashiersLoading && cashiers.length === 0 && (
-          <p className="text-sm text-charcoal-muted">No active cashiers at this shop yet — add one first, or set initial stock to 0.</p>
-        )}
-        {needsCashier && cashiersError && <p role="alert" className="text-sm text-danger">{cashiersError}</p>}
+        {isCreating && !hideInitialStock && cashiersError && <p role="alert" className="text-sm text-danger">{cashiersError}</p>}
 
         <Input
           label="Low stock threshold" required type="number" min={0} value={values.lowStockThreshold} error={errors.lowStockThreshold}

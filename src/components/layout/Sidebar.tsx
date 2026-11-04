@@ -12,6 +12,7 @@ import {
   MonitorSmartphone,
   UserCog,
   Layers,
+  QrCode,
   Settings,
   UserCircle,
   LogOut,
@@ -27,6 +28,9 @@ interface NavItem {
   to?: string;
   icon: ReactElement;
   comingSoon?: boolean;
+  // Opt-in: close the mobile drawer after navigating. Only the UPI Management
+  // item sets this; other items keep their existing behaviour.
+  closeOnNavigate?: boolean;
 }
 
 const primaryNav: NavItem[] = [
@@ -46,6 +50,7 @@ const phase2Nav: NavItem[] = [
   { label: "Sessions", to: "/admin/sessions", icon: <MonitorSmartphone size={19} /> },
   { label: "Cashiers", to: "/admin/cashiers", icon: <UserCog size={19} /> },
   { label: "Consolidation", to: "/admin/consolidation", icon: <Layers size={19} /> },
+  { label: "UPI Management", to: "/admin/upi", icon: <QrCode size={19} />, closeOnNavigate: true },
 ];
 
 function EggLogo({ collapsed }: { collapsed?: boolean }) {
@@ -135,7 +140,7 @@ function SidebarContent({ collapsed, onNavigate, onToggleCollapse, onCloseMobile
         ))}
         <div className="pt-3 mt-3 border-t border-white/8 space-y-1">
           {phase2Nav.map((item) => (
-            <NavButton key={item.label} item={item} collapsed={collapsed} />
+            <NavButton key={item.label} item={item} collapsed={collapsed} onNavigate={item.closeOnNavigate ? onNavigate : undefined} />
           ))}
         </div>
       </nav>

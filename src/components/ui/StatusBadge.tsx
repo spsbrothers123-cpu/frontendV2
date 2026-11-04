@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CheckCircle2, Clock, XCircle, AlertTriangle, Circle } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, AlertTriangle, Circle, EyeOff, RotateCcw } from "lucide-react";
 
 type StatusTone = "positive" | "warning" | "danger" | "neutral";
 
@@ -13,6 +13,9 @@ const toneMap: Record<string, { tone: StatusTone; icon: ReactNode }> = {
   cancelled: { tone: "danger", icon: <XCircle size={13} /> },
   refunded: { tone: "danger", icon: <XCircle size={13} /> },
   inactive: { tone: "neutral", icon: <Circle size={13} /> },
+  assigned: { tone: "positive", icon: <CheckCircle2 size={13} /> },
+  unassigned: { tone: "warning", icon: <EyeOff size={13} /> },
+  "zero stock": { tone: "danger", icon: <AlertTriangle size={13} /> },
   "in stock": { tone: "positive", icon: <CheckCircle2 size={13} /> },
   "out of stock": { tone: "danger", icon: <XCircle size={13} /> },
   paid: { tone: "positive", icon: <CheckCircle2 size={13} /> },
@@ -26,6 +29,9 @@ const toneMap: Record<string, { tone: StatusTone; icon: ReactNode }> = {
   used: { tone: "neutral", icon: <CheckCircle2 size={13} /> },
   expired: { tone: "danger", icon: <XCircle size={13} /> },
   revoked: { tone: "danger", icon: <XCircle size={13} /> },
+  approved: { tone: "positive", icon: <CheckCircle2 size={13} /> },
+  rejected: { tone: "danger", icon: <XCircle size={13} /> },
+  reversed: { tone: "warning", icon: <RotateCcw size={13} /> },
 };
 
 const toneClasses: Record<StatusTone, string> = {
