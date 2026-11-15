@@ -14,7 +14,10 @@ import { RecoveryWarningBanner } from "./RecoveryWarningBanner";
 // own independent shop filter and must keep it when the global shop changes.
 // UPI Management is an admin-level config page covering every branch, so it
 // also opts out (in-progress edits must survive a global shop switch).
-const SHOP_INDEPENDENT_PATHS = ["/admin/cashiers", "/admin/sessions", "/admin/consolidation", "/admin/upi"];
+// The Notification Center and Daily Summary do too: one central Admin sees
+// every branch's notifications regardless of the selected shop, and the
+// Center's filters must survive a shop switch.
+const SHOP_INDEPENDENT_PATHS = ["/admin/cashiers", "/admin/sessions", "/admin/consolidation", "/admin/upi", "/admin/notifications", "/admin/daily-summaries"];
 
 export function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
