@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Store, Receipt, Palette, Terminal, ShieldCheck } from "lucide-react";
+import { Store, Receipt, Palette, Terminal, ShieldCheck, Bell } from "lucide-react";
 import { PageHeader } from "../components/layout/PageHeader";
 import { ShopSettingsPanel } from "../components/settings/ShopSettingsPanel";
 import { TaxBillingSettingsPanel } from "../components/settings/TaxBillingSettingsPanel";
 import { AppearanceSettingsPanel } from "../components/settings/AppearanceSettingsPanel";
 import { PosSettingsPanel } from "../components/settings/PosSettingsPanel";
 import { SecuritySettingsPanel } from "../components/settings/SecuritySettingsPanel";
+import { NotificationSettingsPanel } from "../components/settings/NotificationSettingsPanel";
 
-type Category = "shop" | "tax" | "appearance" | "pos" | "security";
+type Category = "shop" | "tax" | "appearance" | "pos" | "security" | "notifications";
 
 const categories: { value: Category; label: string; icon: React.ReactNode; description: string }[] = [
   { value: "shop", label: "Shop", icon: <Store size={16} />, description: "Name, address, and GSTIN." },
@@ -16,6 +17,7 @@ const categories: { value: Category; label: string; icon: React.ReactNode; descr
   { value: "appearance", label: "Appearance", icon: <Palette size={16} />, description: "Theme and product display." },
   { value: "pos", label: "POS", icon: <Terminal size={16} />, description: "Receipts, printing, invoice format." },
   { value: "security", label: "Security", icon: <ShieldCheck size={16} />, description: "Session timeout, confirmations, and account recovery." },
+  { value: "notifications", label: "Notifications", icon: <Bell size={16} />, description: "Choose which alerts reach the Notification Center." },
 ];
 
 export default function Settings() {
@@ -57,6 +59,7 @@ export default function Settings() {
           {category === "appearance" && <AppearanceSettingsPanel />}
           {category === "pos" && <PosSettingsPanel />}
           {category === "security" && <SecuritySettingsPanel />}
+          {category === "notifications" && <NotificationSettingsPanel />}
         </div>
       </div>
     </div>

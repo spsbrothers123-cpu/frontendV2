@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ShopProvider } from "./context/ShopContext";
+import { NotificationsProvider } from "./context/NotificationsContext";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 import { AdminLayout } from "./components/layout/AdminLayout";
 
@@ -23,6 +24,8 @@ const Sessions = lazy(() => import("./pages/Sessions"));
 const Cashiers = lazy(() => import("./pages/Cashiers"));
 const Consolidation = lazy(() => import("./pages/Consolidation"));
 const UpiManagement = lazy(() => import("./pages/UpiManagement"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const DailySummary = lazy(() => import("./pages/DailySummary"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Profile = lazy(() => import("./pages/Profile"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -52,7 +55,9 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <ShopProvider>
-                      <AdminLayout />
+                      <NotificationsProvider>
+                        <AdminLayout />
+                      </NotificationsProvider>
                     </ShopProvider>
                   </ProtectedRoute>
                 }
@@ -70,6 +75,8 @@ export default function App() {
                 <Route path="cashiers" element={<Cashiers />} />
                 <Route path="consolidation" element={<Consolidation />} />
                 <Route path="upi" element={<UpiManagement />} />
+                <Route path="notifications" element={<Notifications />} />
+                <Route path="daily-summaries/:summaryId" element={<DailySummary />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
               </Route>

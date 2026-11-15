@@ -579,16 +579,8 @@ export interface GlobalSearchResults {
 }
 
 // ── Notifications ─────────────────────────────────────
-export type NotificationType = "low_stock" | "payment_pending" | "session_event" | "system";
-
-export interface NotificationItem {
-  id: string;
-  type: NotificationType;
-  title: string;
-  message: string;
-  time: string;
-  read: boolean;
-}
+// Moved to ./notifications (Admin Notification Center, Phase 1).
+export * from "./notifications";
 
 // ── Invitation codes ────────────────────────────────────
 export type InvitationCodeStatus = "ACTIVE" | "USED" | "EXPIRED" | "REVOKED";

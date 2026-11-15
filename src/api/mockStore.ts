@@ -16,7 +16,6 @@ import type {
   AppearanceSettings,
   PosSettings,
   SecuritySettings,
-  NotificationItem,
   CashierRequest,
   CashierAccount,
   InvitationCode,
@@ -177,12 +176,6 @@ let securitySettings: SecuritySettings = {
   requireConfirmationForRefunds: true,
 };
 
-let notifications: NotificationItem[] = [
-  { id: "n1", type: "low_stock", title: "Low stock", message: "Brown Eggs (Tray) is running low (7 left).", time: "2026-08-26T10:00:00", read: false },
-  { id: "n2", type: "payment_pending", title: "Credit pending", message: "Arjun has ₹2,450 in pending credit.", time: "2026-08-26T09:58:00", read: false },
-  { id: "n3", type: "session_event", title: "Session closed with discrepancy", message: "Meena's session closed ₹250 short.", time: "2026-08-26T20:15:00", read: true },
-];
-
 let cashierRequests: CashierRequest[] = [
   {
     id: "req1",
@@ -260,8 +253,6 @@ export const store = {
   set posSettings(v: PosSettings) { posSettings = v; },
   get securitySettings() { return securitySettings; },
   set securitySettings(v: SecuritySettings) { securitySettings = v; },
-  get notifications() { return notifications; },
-  set notifications(v: NotificationItem[]) { notifications = v; },
   get cashierRequests() { return cashierRequests; },
   set cashierRequests(v: CashierRequest[]) { cashierRequests = v; },
   get cashiers() { return cashiers; },
